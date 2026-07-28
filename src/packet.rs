@@ -4,7 +4,9 @@ mod disconnect;
 pub mod kind;
 mod ping;
 mod property;
+mod publish;
 mod reason;
+pub(crate) mod util;
 
 use crate::packet::kind::PacketType;
 
@@ -77,6 +79,7 @@ pub enum VariableHeader {
 	Connect(connect::VariableHeader),
 	ConnAck(connack::VariableHeader),
 	Disconnect(disconnect::VariableHeader),
+	Publish(publish::VariableHeader),
 }
 
 impl EncodeMqtt for VariableHeader {
@@ -85,6 +88,7 @@ impl EncodeMqtt for VariableHeader {
 			VariableHeader::Connect(connect) => connect.encode(data),
 			VariableHeader::ConnAck(connack) => connack.encode(data),
 			VariableHeader::Disconnect(disconnect) => disconnect.encode(data),
+			VariableHeader::Publish(publish) => publish.encode(data),
 		}
 	}
 }
@@ -109,12 +113,14 @@ impl VariableHeader {
 #[derive(Debug, Clone)]
 pub enum Payload {
 	Connect(connect::Payload),
+	Publish(publish::Payload),
 }
 
 impl EncodeMqtt for Payload {
 	fn encode(&self, data: &mut Vec<u8>) {
 		match self {
 			Payload::Connect(connect) => connect.encode(data),
+			Payload::Publish(publish) => publish.encode(data),
 		}
 	}
 }
@@ -125,9 +131,10 @@ pub enum ProtocolVersion {
 	V5 = 5,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::FromRepr)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, strum::FromRepr)]
 #[repr(u8)]
-pub enum WillQoS {
+pub enum QoS {
+	#[default]
 	AtMostOnce = 0,
 	AtLeastOnce = 1,
 	ExactlyOnce = 2,
@@ -137,6 +144,15 @@ pub enum WillQoS {
 pub struct MqttFixedHeader {
 	pub kind: PacketType,
 	pub remaining_length: u8,
+}
+
+impl MqttFixedHeader {
+	pub fn new(kind: PacketType) -> Self {
+		Self {
+			kind,
+			remaining_length: 0,
+		}
+	}
 }
 
 impl EncodeMqtt for MqttFixedHeader {

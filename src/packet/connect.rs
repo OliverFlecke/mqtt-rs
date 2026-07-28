@@ -1,6 +1,6 @@
 use crate::packet::{
 	self, ControlPacketParseError, DecodeMqtt, EncodeMqtt, MqttControlPacket, MqttFixedHeader,
-	ProtocolVersion, WillQoS, kind::PacketType, property::Properties,
+	ProtocolVersion, QoS, kind::PacketType, property::Properties,
 };
 
 /// Create a new connect packet
@@ -103,7 +103,7 @@ pub struct ConnectFlags {
 	username: bool,
 	password: bool,
 	will_retain: bool,
-	will_qos: WillQoS,
+	will_qos: QoS,
 	will: bool,
 	clean_session: bool,
 }
@@ -116,7 +116,7 @@ impl Default for ConnectFlags {
 			username: false,
 			password: false,
 			will_retain: false,
-			will_qos: WillQoS::AtMostOnce,
+			will_qos: QoS::AtMostOnce,
 			will: false,
 			clean_session: true,
 		}
@@ -150,7 +150,7 @@ impl TryFrom<u8> for ConnectFlags {
 			username: (value & 0x80) != 0,
 			password: (value & 0x40) != 0,
 			will_retain: (value & 0x20) != 0,
-			will_qos: WillQoS::from_repr((value >> 3) & 0x03)
+			will_qos: QoS::from_repr((value >> 3) & 0x03)
 				.ok_or(ControlPacketParseError::UnsupportedQoS((value >> 3) & 0x03))?,
 			will: (value & 0x04) != 0,
 			clean_session: (value & 0x02) != 0,
@@ -183,7 +183,7 @@ mod tests {
 			username: true,
 			password: true,
 			will_retain: true,
-			will_qos: WillQoS::ExactlyOnce,
+			will_qos: QoS::ExactlyOnce,
 			will: true,
 			clean_session: false,
 		};
@@ -201,7 +201,7 @@ mod tests {
 			username: true,
 			password: true,
 			will_retain: true,
-			will_qos: WillQoS::ExactlyOnce,
+			will_qos: QoS::ExactlyOnce,
 			will: true,
 			clean_session: false,
 		};

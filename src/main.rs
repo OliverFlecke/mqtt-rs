@@ -83,6 +83,15 @@ async fn main() -> anyhow::Result<()> {
 			Ok::<_, anyhow::Error>(())
 		});
 
+		sleep(Duration::from_millis(100)).await;
+
+		{
+			let msg =
+				MqttControlPacket::create_publish("test".to_string(), b"hello world".to_vec());
+			let mut w = writer.lock().await;
+			w.write_all(&msg.encode()).await?;
+		}
+
 		tokio::select! {
 			_ = token.cancelled() => {}
 			_ = task => {}
