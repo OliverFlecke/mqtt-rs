@@ -19,6 +19,9 @@ pub struct Cli {
 	#[arg(short, long)]
 	pub client_id: Option<String>,
 
+	#[arg(short, long)]
+	pub stay_connected: bool,
+
 	#[command(subcommand)]
 	pub command: Command,
 }

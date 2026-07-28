@@ -1,6 +1,6 @@
 use clap::Parser;
 use mqtt::{
-	cli::Cli,
+	cli::{Cli, Command},
 	client::MqttClient,
 	packet::{MqttControlPacket, connect, create_disconnect},
 };
@@ -21,20 +21,28 @@ async fn main() -> anyhow::Result<()> {
 
 	let client = MqttClient::connect(format!("{}:{}", cli.host, cli.port)).await?;
 	let (tx, mut rx) = client.listen_and_wait()?;
-	tokio::spawn(async move {
+	let reader = tokio::spawn(async move {
 		while let Some(packet) = rx.recv().await {
 			tracing::debug!("Packet received: {:x?}", packet.header.kind);
 		}
 	});
 
-	tx.send(connect(Some(String::from("alice")))).await?;
-	tx.send(MqttControlPacket::create_publish(
-		"test".to_string(),
-		b"hello world".to_vec(),
-	))
-	.await?;
+	match cli.command {
+		Command::Connect => {
+			tx.send(connect(Some(String::from("alice")))).await?;
+		}
+		Command::Publish { topic, message } => {
+			tx.send(connect(Some(String::from("alice")))).await?;
+			tx.send(MqttControlPacket::create_publish(
+				topic,
+				message.into_bytes(),
+			))
+			.await?;
+		}
+	}
 
 	tokio::select! {
+		_ = reader => {}
 		_ = signal::ctrl_c() => {
 			tx.send(create_disconnect()).await?;
 
