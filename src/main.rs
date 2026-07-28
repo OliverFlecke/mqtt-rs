@@ -55,37 +55,9 @@ async fn main() -> anyhow::Result<()> {
 	});
 
 	let write_task = tokio::spawn(async move {
-		// Trying to manually write a connect packet here, then refactor it
-		let mut data: Vec<u8> = vec![
-			0x10,
-			0, // Fixed header
-			// Variable header
-			0x00,
-			0x04, // Packet type, flags, remaining length
-			b'M',
-			b'Q',
-			b'T',
-			b'T',        // Protocol name
-			0x05,        // Protocol version, byte 7
-			0b0000_0010, // Connect flags
-			0x00,
-			0x3c, // Keep alive
-			// Properties - don't think these are required
-			// 0x05,
-			// 0x11,
-			// 0x00,
-			// 0x00,
-			// 0x00,
-			// 0x0A,
-			// Payload
-			0,
-			0,
-			6,
-		];
-		data.extend_from_slice(b"oliver");
-		data[1] = data.len() as u8 - 2;
-
-		tracing::debug!("Writing data (length: {}): {:x?}", data.len(), data);
+		let packet = MqttControlPacket::connect(Some(String::from("alice")));
+		let data = packet.encode();
+		tracing::debug!("Encoded data (length: {}): {:2x?}", data.len(), data);
 
 		let written = writer.write(&data).await?;
 		writer.flush().await?;

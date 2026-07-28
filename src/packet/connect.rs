@@ -1,0 +1,139 @@
+use crate::packet::{ControlPacketParseError, EncodeMqtt, ProtocolVersion, WillQoS};
+
+#[derive(Debug, Clone)]
+pub struct VariableHeaderConnect {
+	version: ProtocolVersion,
+	connect_flags: ConnectFlags,
+	keep_alive: u16,
+}
+
+impl Default for VariableHeaderConnect {
+	fn default() -> Self {
+		Self {
+			version: ProtocolVersion::V5,
+			connect_flags: ConnectFlags::default(),
+			keep_alive: 60,
+		}
+	}
+}
+
+impl VariableHeaderConnect {
+	pub fn new(flags: Option<ConnectFlags>) -> Self {
+		Self {
+			version: ProtocolVersion::V5,
+			connect_flags: flags.unwrap_or_default(),
+			keep_alive: 60,
+		}
+	}
+}
+
+impl EncodeMqtt for VariableHeaderConnect {
+	fn encode(&self, data: &mut Vec<u8>) {
+		data.extend_from_slice(&[0x00, 0x04]);
+		data.extend_from_slice(b"MQTT");
+		data.push(self.version as u8);
+		data.push(self.connect_flags.clone().into());
+		data.extend_from_slice(&self.keep_alive.to_be_bytes());
+
+		// TODO: Properties
+		data.push(0x0); // Properties length
+	}
+}
+
+/// Payload for a connect packet.
+#[derive(Debug, Clone)]
+pub struct ConnectPayload {
+	pub client_id: Option<String>,
+}
+
+impl EncodeMqtt for ConnectPayload {
+	fn encode(&self, data: &mut Vec<u8>) {
+		let len: u16 = self.client_id.as_ref().map(|s| s.len() as u16).unwrap_or(0);
+		tracing::debug!(
+			"Client ID length: {} -> {:x?}",
+			len,
+			self.client_id.as_ref().map(|s| s.as_bytes())
+		);
+
+		data.extend_from_slice(&len.to_be_bytes());
+
+		if let Some(client_id) = &self.client_id {
+			data.extend_from_slice(client_id.as_bytes());
+		}
+	}
+}
+
+/// Contains flags that are required for a connection request.
+#[derive(Debug, Clone)]
+pub struct ConnectFlags {
+	username: bool,
+	password: bool,
+	will_retain: bool,
+	will_qos: WillQoS,
+	will: bool,
+	clean_session: bool,
+}
+
+/// Implements default for the connect flags. All flags will be set to false,
+/// except the `clean_session` flag, which assumes the connection is new.
+impl Default for ConnectFlags {
+	fn default() -> Self {
+		Self {
+			username: false,
+			password: false,
+			will_retain: false,
+			will_qos: WillQoS::AtMostOnce,
+			will: false,
+			clean_session: true,
+		}
+	}
+}
+
+impl From<ConnectFlags> for u8 {
+	fn from(val: ConnectFlags) -> Self {
+		let mut value = 0;
+		value |= (val.username as u8) << 7;
+		value |= (val.password as u8) << 6;
+		value |= (val.will_retain as u8) << 5;
+		value |= (val.will_qos as u8) << 3;
+		value |= (val.will as u8) << 2;
+		value |= (val.clean_session as u8) << 1;
+		value
+	}
+}
+
+impl TryFrom<u8> for ConnectFlags {
+	type Error = ControlPacketParseError;
+
+	fn try_from(value: u8) -> Result<Self, Self::Error> {
+		Ok(Self {
+			username: (value & 0x80) != 0,
+			password: (value & 0x40) != 0,
+			will_retain: (value & 0x20) != 0,
+			will_qos: WillQoS::from_repr(value & 0x18 >> 3)
+				.ok_or(ControlPacketParseError::UnsupportedQoS(value & 0x18 >> 3))?,
+			will: (value & 0x04) != 0,
+			clean_session: (value & 0x02) != 0,
+		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_connect_flags() {
+		let flags = ConnectFlags {
+			username: true,
+			password: true,
+			will_retain: true,
+			will_qos: WillQoS::ExactlyOnce,
+			will: true,
+			clean_session: false,
+		};
+
+		let encoded: u8 = flags.into();
+		assert_eq!(encoded, 0b1010_1011);
+	}
+}
