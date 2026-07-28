@@ -1,5 +1,5 @@
 use anyhow::Context;
-use mqtt_cli::packet_type::PacketType;
+use mqtt_cli::packet::MqttControlPacket;
 use tokio::{
 	io::{self, AsyncReadExt, AsyncWriteExt},
 	net::TcpStream,
@@ -37,7 +37,6 @@ async fn main() -> anyhow::Result<()> {
 					}
 					Ok(length) => {
 						tracing::debug!("Received {} bytes", length);
-						tracing::debug!("Bytes read {:x?}", buf[0..length].to_vec());
 
 						let packet = MqttControlPacket::parse(&buf[0..length]);
 						tracing::debug!("Packet: {:?}", packet);
@@ -107,36 +106,4 @@ async fn main() -> anyhow::Result<()> {
 	_ = tokio::try_join!(write_task, read_task);
 
 	Ok(())
-}
-
-#[derive(Debug)]
-pub struct MqttControlPacket {
-	// Packet type and flags together make up the first byte.
-	header: MqttFixedHeader,
-}
-
-impl MqttControlPacket {
-	pub fn parse(data: &[u8]) -> Result<Self, anyhow::Error> {
-		let header = MqttFixedHeader::parse(data)?;
-		Ok(Self { header })
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct MqttFixedHeader {
-	kind: PacketType,
-	remaining_length: u8,
-}
-
-impl MqttFixedHeader {
-	pub fn parse(data: &[u8]) -> Result<Self, anyhow::Error> {
-		if data.len() < 2 {
-			return Err(anyhow::anyhow!("Not enough data"));
-		}
-
-		Ok(Self {
-			kind: PacketType::from_repr(data[0] >> 4).context("unknow packet type")?,
-			remaining_length: data[1],
-		})
-	}
 }
