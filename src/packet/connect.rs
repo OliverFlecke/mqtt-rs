@@ -1,9 +1,22 @@
 use crate::packet::{
-	ControlPacketParseError, EncodeMqtt, ProtocolVersion, WillQoS, property::Properties,
+	self, ControlPacketParseError, DecodeMqtt, EncodeMqtt, MqttControlPacket, MqttFixedHeader,
+	ProtocolVersion, WillQoS, kind::PacketType, property::Properties,
 };
 
+/// Create a new connect packet
+pub fn connect(client_id: Option<String>) -> MqttControlPacket {
+	MqttControlPacket {
+		header: MqttFixedHeader {
+			kind: PacketType::Connect,
+			remaining_length: 0,
+		},
+		variable_header: Some(packet::VariableHeader::Connect(VariableHeader::default())),
+		payload: Some(packet::Payload::Connect(Payload { client_id })),
+	}
+}
+
 #[derive(Debug, Clone)]
-pub struct VariableHeaderConnect {
+pub struct VariableHeader {
 	version: ProtocolVersion,
 	connect_flags: ConnectFlags,
 	keep_alive: u16,
@@ -11,7 +24,7 @@ pub struct VariableHeaderConnect {
 	properties: Option<Properties>,
 }
 
-impl Default for VariableHeaderConnect {
+impl Default for VariableHeader {
 	fn default() -> Self {
 		Self {
 			version: ProtocolVersion::V5,
@@ -22,7 +35,7 @@ impl Default for VariableHeaderConnect {
 	}
 }
 
-impl VariableHeaderConnect {
+impl VariableHeader {
 	pub fn new(flags: Option<ConnectFlags>) -> Self {
 		Self {
 			version: ProtocolVersion::V5,
@@ -33,7 +46,7 @@ impl VariableHeaderConnect {
 	}
 }
 
-impl EncodeMqtt for VariableHeaderConnect {
+impl EncodeMqtt for VariableHeader {
 	fn encode(&self, data: &mut Vec<u8>) {
 		data.extend_from_slice(&[0x00, 0x04]);
 		data.extend_from_slice(b"MQTT");
@@ -41,18 +54,33 @@ impl EncodeMqtt for VariableHeaderConnect {
 		data.push(self.connect_flags.clone().into());
 		data.extend_from_slice(&self.keep_alive.to_be_bytes());
 
-		// TODO: Properties
-		data.push(0x0); // Properties length
+		self.properties.encode(data);
+	}
+}
+
+impl DecodeMqtt<VariableHeader> for VariableHeader {
+	fn try_decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
+		if [0x00, 0x04, b'M', b'Q', b'T', b'T'] != data[0..6] {
+			return Err(ControlPacketParseError::IncorrectProtocol);
+		}
+
+		Ok(Self {
+			version: ProtocolVersion::from_repr(data[7])
+				.ok_or(ControlPacketParseError::UnsupportedProtocol(data[7]))?,
+			connect_flags: ConnectFlags::try_from(data[8])?,
+			keep_alive: u16::from_be_bytes([data[9], data[10]]),
+			properties: Option::<Properties>::try_decode(&data[11..])?,
+		})
 	}
 }
 
 /// Payload for a connect packet.
 #[derive(Debug, Clone)]
-pub struct ConnectPayload {
+pub struct Payload {
 	pub client_id: Option<String>,
 }
 
-impl EncodeMqtt for ConnectPayload {
+impl EncodeMqtt for Payload {
 	fn encode(&self, data: &mut Vec<u8>) {
 		let len: u16 = self.client_id.as_ref().map(|s| s.len() as u16).unwrap_or(0);
 		tracing::debug!(

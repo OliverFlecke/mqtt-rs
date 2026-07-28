@@ -17,12 +17,12 @@ impl EncodeMqtt for VariableHeader {
 }
 
 impl DecodeMqtt<VariableHeader> for VariableHeader {
-	fn decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
+	fn try_decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
 		Ok(Self {
 			session_present: data[0] == 1,
 			reason_code: ReasonCode::from_repr(data[1])
 				.ok_or(ControlPacketParseError::UnknownReasonCode(data[1]))?,
-			properties: Some(Properties::decode(&data[2..])?),
+			properties: Option::<Properties>::try_decode(&data[2..])?,
 		})
 	}
 }

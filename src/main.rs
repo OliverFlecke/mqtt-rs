@@ -1,5 +1,5 @@
 use anyhow::Context;
-use mqtt_cli::packet::MqttControlPacket;
+use mqtt_cli::packet::{MqttControlPacket, connect, create_disconnect};
 use tokio::{
 	io::{self, AsyncReadExt, AsyncWriteExt},
 	net::TcpStream,
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
 	});
 
 	let write_task = tokio::spawn(async move {
-		let packet = MqttControlPacket::connect(Some(String::from("alice")));
+		let packet = connect(Some(String::from("alice")));
 		let data = packet.encode();
 		tracing::debug!("Encoded data (length: {}): {:2x?}", data.len(), data);
 
@@ -68,6 +68,9 @@ async fn main() -> anyhow::Result<()> {
 		tokio::select! {
 			_ = token.cancelled() => {}
 			_ = signal::ctrl_c() => {
+				writer.write(&create_disconnect().encode()).await?;
+				writer.flush().await?;
+
 				tracing::debug!("Shutting down");
 				writer.shutdown().await?;
 				token.cancel();

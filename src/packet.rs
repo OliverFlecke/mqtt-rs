@@ -1,13 +1,15 @@
 mod connack;
 mod connect;
+mod disconnect;
 pub mod kind;
+mod ping;
 mod property;
 mod reason;
 
-use crate::packet::{
-	connect::{ConnectPayload, VariableHeaderConnect},
-	kind::PacketType,
-};
+use crate::packet::kind::PacketType;
+
+pub use connect::connect;
+pub use disconnect::create_disconnect;
 
 /// Represents a single MQTT control packet, containing a fixed header,
 /// and optionally a variable header and payload.
@@ -24,7 +26,7 @@ impl MqttControlPacket {
 	pub fn decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
 		tracing::debug!("Parsing packet from bytes {:x?}", data);
 
-		let header = MqttFixedHeader::decode(data)?;
+		let header = MqttFixedHeader::try_decode(data)?;
 
 		Ok(Self {
 			variable_header: VariableHeader::decode(header.kind, &data[2..])?,
@@ -49,17 +51,6 @@ impl MqttControlPacket {
 
 		data
 	}
-
-	pub fn connect(client_id: Option<String>) -> Self {
-		Self {
-			header: MqttFixedHeader {
-				kind: PacketType::Connect,
-				remaining_length: 0,
-			},
-			variable_header: Some(VariableHeader::Connect(VariableHeaderConnect::default())),
-			payload: Some(Payload::Connect(ConnectPayload { client_id })),
-		}
-	}
 }
 
 /// Trait for types that can be encoded into a byte vector following the MQTT
@@ -76,21 +67,23 @@ pub(crate) trait EncodeMqtt {
 
 pub(crate) trait DecodeMqtt<T> {
 	// TODO: we properly need the length of the decoded data here for further decoding.
-	fn decode(data: &[u8]) -> Result<T, ControlPacketParseError>;
+	fn try_decode(data: &[u8]) -> Result<T, ControlPacketParseError>;
 }
 
 /// Represents the various variable headers that can be used in a packet.
 #[derive(Debug, Clone)]
 pub enum VariableHeader {
-	Connect(VariableHeaderConnect),
+	Connect(connect::VariableHeader),
 	ConnAck(connack::VariableHeader),
+	Disconnect(disconnect::VariableHeader),
 }
 
 impl EncodeMqtt for VariableHeader {
 	fn encode(&self, data: &mut Vec<u8>) {
 		match self {
 			VariableHeader::Connect(connect) => connect.encode(data),
-			_ => unimplemented!("Encoding of {:?} is not yet supported", self),
+			VariableHeader::ConnAck(connack) => connack.encode(data),
+			VariableHeader::Disconnect(disconnect) => disconnect.encode(data),
 		}
 	}
 }
@@ -98,7 +91,12 @@ impl EncodeMqtt for VariableHeader {
 impl VariableHeader {
 	fn decode(kind: PacketType, data: &[u8]) -> Result<Option<Self>, ControlPacketParseError> {
 		match kind {
-			PacketType::ConnAck => Ok(Some(Self::ConnAck(connack::VariableHeader::decode(data)?))),
+			PacketType::Connect => Ok(Some(Self::Connect(connect::VariableHeader::try_decode(
+				data,
+			)?))),
+			PacketType::ConnAck => Ok(Some(Self::ConnAck(connack::VariableHeader::try_decode(
+				data,
+			)?))),
 			_ => unimplemented!("Decoding of {:?} is not yet supported", kind),
 		}
 	}
@@ -106,7 +104,7 @@ impl VariableHeader {
 
 #[derive(Debug, Clone)]
 pub enum Payload {
-	Connect(ConnectPayload),
+	Connect(connect::Payload),
 }
 
 impl EncodeMqtt for Payload {
@@ -145,7 +143,7 @@ impl EncodeMqtt for MqttFixedHeader {
 }
 
 impl DecodeMqtt<MqttFixedHeader> for MqttFixedHeader {
-	fn decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
+	fn try_decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
 		if data.len() < 2 {
 			return Err(ControlPacketParseError::NotEnoughData);
 		}
@@ -170,4 +168,8 @@ pub enum ControlPacketParseError {
 	NotEnoughData,
 	#[error("Unsupported QoS {0:x}")]
 	UnsupportedQoS(u8),
+	#[error("Incorrect protocol, must be MQTT")]
+	IncorrectProtocol,
+	#[error("Unsupported protocol version {0:x}")]
+	UnsupportedProtocol(u8),
 }

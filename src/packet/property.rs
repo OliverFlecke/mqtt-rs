@@ -33,17 +33,27 @@ pub enum PropertyId {
 
 // TODO: write encoder and decoder for properties
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Properties {}
 
 impl EncodeMqtt for Properties {
-	fn encode(&self, _: &mut Vec<u8>) {
-		// TODO: encode properties
+	fn encode(&self, data: &mut Vec<u8>) {
+		data.push(0);
 	}
 }
 
-impl DecodeMqtt<Properties> for Properties {
-	fn decode(_: &[u8]) -> Result<Self, ControlPacketParseError> {
-		Ok(Self {})
+impl EncodeMqtt for Option<Properties> {
+	fn encode(&self, data: &mut Vec<u8>) {
+		if let Some(properties) = self {
+			properties.encode(data);
+		} else {
+			data.push(0);
+		}
+	}
+}
+
+impl DecodeMqtt<Option<Properties>> for Option<Properties> {
+	fn try_decode(_: &[u8]) -> Result<Self, ControlPacketParseError> {
+		Ok(None)
 	}
 }
