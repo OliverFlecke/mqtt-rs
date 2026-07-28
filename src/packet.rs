@@ -10,6 +10,7 @@ use crate::packet::kind::PacketType;
 
 pub use connect::connect;
 pub use disconnect::create_disconnect;
+pub use ping::{create_ping_req, create_ping_resp};
 
 /// Represents a single MQTT control packet, containing a fixed header,
 /// and optionally a variable header and payload.
@@ -97,6 +98,9 @@ impl VariableHeader {
 			PacketType::ConnAck => Ok(Some(Self::ConnAck(connack::VariableHeader::try_decode(
 				data,
 			)?))),
+
+			PacketType::PingReq | PacketType::PingResp => Ok(None),
+
 			_ => unimplemented!("Decoding of {:?} is not yet supported", kind),
 		}
 	}

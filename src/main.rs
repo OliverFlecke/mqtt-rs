@@ -1,9 +1,13 @@
+use std::{sync::Arc, time::Duration};
+
 use anyhow::Context;
-use mqtt_cli::packet::{MqttControlPacket, connect, create_disconnect};
+use mqtt_cli::packet::{MqttControlPacket, connect, create_disconnect, create_ping_req};
 use tokio::{
 	io::{self, AsyncReadExt, AsyncWriteExt},
 	net::TcpStream,
 	signal,
+	sync::Mutex,
+	time::sleep,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::level_filters::LevelFilter;
@@ -33,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
 			let data = reader.read(&mut buf).await;
 			match data {
 				Ok(0) => {
-					tracing::warn!("Received 0 bytes, likely protocol error.");
+					tracing::warn!("Server disconnected");
 					read_token.cancel();
 					break;
 				}
@@ -61,18 +65,34 @@ async fn main() -> anyhow::Result<()> {
 		let data = packet.encode();
 		tracing::debug!("Encoded data (length: {}): {:2x?}", data.len(), data);
 
-		let written = writer.write(&data).await?;
-		writer.flush().await?;
-		tracing::debug!("Wrote {} bytes", written);
+		writer.write_all(&data).await?;
+
+		let writer = Arc::new(Mutex::new(writer));
+		let ping_writer = writer.clone();
+		let task = tokio::spawn(async move {
+			let packet = create_ping_req();
+			let encoded = packet.encode();
+			loop {
+				sleep(Duration::from_secs(5)).await;
+
+				let mut w = ping_writer.lock().await;
+				w.write_all(&encoded).await?;
+			}
+
+			#[allow(unreachable_code)]
+			Ok::<_, anyhow::Error>(())
+		});
 
 		tokio::select! {
 			_ = token.cancelled() => {}
+			_ = task => {}
 			_ = signal::ctrl_c() => {
-				writer.write(&create_disconnect().encode()).await?;
-				writer.flush().await?;
+				let mut w = writer.lock().await;
+				w.write_all(&create_disconnect().encode()).await?;
+				w.flush().await?;
 
 				tracing::debug!("Shutting down");
-				writer.shutdown().await?;
+				w.shutdown().await?;
 				token.cancel();
 			},
 		}

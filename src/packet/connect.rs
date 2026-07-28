@@ -29,7 +29,7 @@ impl Default for VariableHeader {
 		Self {
 			version: ProtocolVersion::V5,
 			connect_flags: ConnectFlags::default(),
-			keep_alive: 60,
+			keep_alive: 10,
 			properties: None,
 		}
 	}
