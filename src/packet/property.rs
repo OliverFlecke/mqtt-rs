@@ -1,6 +1,7 @@
 use crate::packet::{ControlPacketParseError, DecodeMqtt, EncodeMqtt};
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum PropertyId {
 	PayloadFormatIndicator = 0x01,     // Byte -> PUBLISH, Will Properties
 	MessageExpiryInterval = 0x02,      // Four Byte Integer -> PUBLISH, Will Properties

@@ -18,6 +18,7 @@ impl MqttControlPacket {
 }
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct Flags {
 	pub duplicate: bool,
 	pub qos: QoS,
