@@ -1,12 +1,12 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use anyhow::Context;
 use mqtt_cli::packet::{MqttControlPacket, connect, create_disconnect, create_ping_req};
 use tokio::{
-	io::{self, AsyncReadExt, AsyncWriteExt},
+	io::{self, AsyncRead, AsyncReadExt, AsyncWriteExt},
 	net::TcpStream,
-	signal,
-	sync::Mutex,
+	pin, signal,
+	sync::mpsc::{self, Sender},
 	time::sleep,
 };
 use tokio_util::sync::CancellationToken;
@@ -27,90 +27,105 @@ async fn main() -> anyhow::Result<()> {
 		.context("Failed to connect")?;
 	tracing::debug!("Socket connected {:?}", socket.local_addr()?.port());
 
-	let (mut reader, mut writer) = io::split(socket);
+	let (reader, mut writer) = io::split(socket);
 
-	let read_token = token.clone();
-	let read_task = tokio::spawn(async move {
-		let mut buf = [0; 1024];
-
-		loop {
-			let data = reader.read(&mut buf).await;
-			match data {
-				Ok(0) => {
-					tracing::warn!("Server disconnected");
-					read_token.cancel();
-					break;
-				}
-				Ok(length) => {
-					tracing::debug!("Received {} bytes", length);
-
-					let packet = MqttControlPacket::decode(&buf[0..length]);
-					match packet {
-						Ok(packet) => tracing::debug!("Packet: {:#?}", packet),
-						Err(err) => tracing::error!("Error parsing packet: {:?}", err),
-					}
-				}
-				Err(err) => {
-					tracing::error!("Error reading from socket: {:?}", err);
-				}
+	{
+		let (tx, mut rx) = mpsc::channel::<MqttControlPacket>(4);
+		let read_token = token.clone();
+		tokio::spawn(async move {
+			if let Err(err) = read(reader, tx, read_token).await {
+				tracing::error!("Error reading from socket: {:?}", err);
 			}
-		}
-
-		tracing::trace!("Reader closed");
-		Ok::<_, anyhow::Error>(())
-	});
-
-	let write_task = tokio::spawn(async move {
-		let packet = connect(Some(String::from("alice")));
-		let data = packet.encode();
-		tracing::debug!("Encoded data (length: {}): {:2x?}", data.len(), data);
-
-		writer.write_all(&data).await?;
-
-		let writer = Arc::new(Mutex::new(writer));
-		let ping_writer = writer.clone();
-		let task = tokio::spawn(async move {
-			let packet = create_ping_req();
-			let encoded = packet.encode();
-			loop {
-				sleep(Duration::from_secs(5)).await;
-
-				let mut w = ping_writer.lock().await;
-				w.write_all(&encoded).await?;
-			}
-
-			#[allow(unreachable_code)]
-			Ok::<_, anyhow::Error>(())
 		});
+		tokio::spawn(async move {
+			while let Some(packet) = rx.recv().await {
+				tracing::debug!("Packet received: {:x?}", packet.header.kind);
+			}
+		});
+	}
 
-		sleep(Duration::from_millis(100)).await;
+	let (tx, mut rx) = mpsc::channel::<MqttControlPacket>(4);
+	tokio::spawn(async move {
+		while let Some(packet) = rx.recv().await {
+			tracing::debug!("Sending packet type: {:x?}", packet.header.kind);
+			tracing::trace!("Sending packet: {:#?}", packet);
 
-		{
-			let msg =
-				MqttControlPacket::create_publish("test".to_string(), b"hello world".to_vec());
-			let mut w = writer.lock().await;
-			w.write_all(&msg.encode()).await?;
+			match writer.write_all(&packet.encode()).await {
+				Ok(_) => {}
+				Err(err) => {
+					tracing::error!("Error writing to socket: {:?}", err);
+				}
+			};
 		}
-
-		tokio::select! {
-			_ = token.cancelled() => {}
-			_ = task => {}
-			_ = signal::ctrl_c() => {
-				let mut w = writer.lock().await;
-				w.write_all(&create_disconnect().encode()).await?;
-				w.flush().await?;
-
-				tracing::debug!("Shutting down");
-				w.shutdown().await?;
-				token.cancel();
-			},
-		}
-
-		tracing::trace!("Writer closed");
-		Ok::<_, anyhow::Error>(())
 	});
 
-	_ = tokio::try_join!(write_task, read_task);
+	tx.send(connect(Some(String::from("alice")))).await?;
+	sleep(Duration::from_millis(100)).await;
 
+	tx.send(MqttControlPacket::create_publish(
+		"test".to_string(),
+		b"hello world".to_vec(),
+	))
+	.await?;
+
+	tracing::trace!("Writer closed");
+
+	tokio::select! {
+		_ = health_check(tx.clone()) => {}
+		_ = token.cancelled() => {}
+		_ = signal::ctrl_c() => {
+			tx.send(create_disconnect()).await?;
+
+			tracing::debug!("Shutting down");
+			token.cancel();
+		},
+	}
+
+	// _ = tokio::try_join!(write_task, read_task, sender_task);
+
+	Ok(())
+}
+
+async fn health_check(writer: Sender<MqttControlPacket>) -> Result<(), anyhow::Error> {
+	loop {
+		sleep(Duration::from_secs(5)).await;
+
+		let packet = create_ping_req();
+		writer.send(packet).await?;
+	}
+}
+
+async fn read(
+	reader: impl AsyncRead,
+	tx: Sender<MqttControlPacket>,
+	cancellation_token: CancellationToken,
+) -> anyhow::Result<()> {
+	pin!(reader);
+
+	let mut buf = [0; 1024];
+	loop {
+		let data = reader.read(&mut buf).await;
+		match data {
+			Ok(0) => {
+				tracing::warn!("Server disconnected");
+				cancellation_token.cancel();
+				break;
+			}
+			Ok(length) => {
+				tracing::trace!("Received {} bytes", length);
+
+				let packet = MqttControlPacket::decode(&buf[0..length]);
+				match packet {
+					Ok(packet) => tx.send(packet).await?,
+					Err(err) => tracing::error!("Error parsing packet: {:?}", err),
+				}
+			}
+			Err(err) => {
+				tracing::error!("Error reading from socket: {:?}", err);
+			}
+		}
+	}
+
+	tracing::trace!("Reader closed");
 	Ok(())
 }
