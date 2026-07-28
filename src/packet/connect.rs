@@ -1,10 +1,14 @@
-use crate::packet::{ControlPacketParseError, EncodeMqtt, ProtocolVersion, WillQoS};
+use crate::packet::{
+	ControlPacketParseError, EncodeMqtt, ProtocolVersion, WillQoS, property::Properties,
+};
 
 #[derive(Debug, Clone)]
 pub struct VariableHeaderConnect {
 	version: ProtocolVersion,
 	connect_flags: ConnectFlags,
 	keep_alive: u16,
+	#[allow(dead_code)]
+	properties: Option<Properties>,
 }
 
 impl Default for VariableHeaderConnect {
@@ -13,6 +17,7 @@ impl Default for VariableHeaderConnect {
 			version: ProtocolVersion::V5,
 			connect_flags: ConnectFlags::default(),
 			keep_alive: 60,
+			properties: None,
 		}
 	}
 }
@@ -23,6 +28,7 @@ impl VariableHeaderConnect {
 			version: ProtocolVersion::V5,
 			connect_flags: flags.unwrap_or_default(),
 			keep_alive: 60,
+			properties: None,
 		}
 	}
 }

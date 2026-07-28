@@ -1,6 +1,7 @@
-mod connact;
+mod connack;
 mod connect;
 pub mod kind;
+mod property;
 mod reason;
 
 use crate::packet::{
@@ -20,15 +21,15 @@ pub struct MqttControlPacket {
 
 impl MqttControlPacket {
 	/// Parse a packet from the given data.
-	pub fn parse(data: &[u8]) -> Result<Self, ControlPacketParseError> {
+	pub fn decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
 		tracing::debug!("Parsing packet from bytes {:x?}", data);
 
-		let header = MqttFixedHeader::parse(data)?;
+		let header = MqttFixedHeader::decode(data)?;
 
 		Ok(Self {
+			variable_header: VariableHeader::decode(header.kind, &data[2..])?,
+			payload: None, // TODO: Parse payload
 			header,
-			variable_header: None, // TODO: Parse variable header
-			payload: None,
 		})
 	}
 
@@ -74,18 +75,31 @@ pub(crate) trait EncodeMqtt {
 }
 
 pub(crate) trait DecodeMqtt<T> {
+	// TODO: we properly need the length of the decoded data here for further decoding.
 	fn decode(data: &[u8]) -> Result<T, ControlPacketParseError>;
 }
 
+/// Represents the various variable headers that can be used in a packet.
 #[derive(Debug, Clone)]
 pub enum VariableHeader {
 	Connect(VariableHeaderConnect),
+	ConnAck(connack::VariableHeader),
 }
 
 impl EncodeMqtt for VariableHeader {
 	fn encode(&self, data: &mut Vec<u8>) {
 		match self {
 			VariableHeader::Connect(connect) => connect.encode(data),
+			_ => unimplemented!("Encoding of {:?} is not yet supported", self),
+		}
+	}
+}
+
+impl VariableHeader {
+	fn decode(kind: PacketType, data: &[u8]) -> Result<Option<Self>, ControlPacketParseError> {
+		match kind {
+			PacketType::ConnAck => Ok(Some(Self::ConnAck(connack::VariableHeader::decode(data)?))),
+			_ => unimplemented!("Decoding of {:?} is not yet supported", kind),
 		}
 	}
 }
@@ -130,8 +144,8 @@ impl EncodeMqtt for MqttFixedHeader {
 	}
 }
 
-impl MqttFixedHeader {
-	pub fn parse(data: &[u8]) -> Result<Self, ControlPacketParseError> {
+impl DecodeMqtt<MqttFixedHeader> for MqttFixedHeader {
+	fn decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
 		if data.len() < 2 {
 			return Err(ControlPacketParseError::NotEnoughData);
 		}

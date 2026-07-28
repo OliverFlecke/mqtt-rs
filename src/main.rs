@@ -40,8 +40,11 @@ async fn main() -> anyhow::Result<()> {
 				Ok(length) => {
 					tracing::debug!("Received {} bytes", length);
 
-					let packet = MqttControlPacket::parse(&buf[0..length]);
-					tracing::debug!("Packet: {:?}", packet);
+					let packet = MqttControlPacket::decode(&buf[0..length]);
+					match packet {
+						Ok(packet) => tracing::debug!("Packet: {:#?}", packet),
+						Err(err) => tracing::error!("Error parsing packet: {:?}", err),
+					}
 				}
 				Err(err) => {
 					tracing::error!("Error reading from socket: {:?}", err);
