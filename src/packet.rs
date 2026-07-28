@@ -1,10 +1,15 @@
+mod connact;
 mod connect;
+pub mod kind;
+mod reason;
 
-use crate::{
-	packet::connect::{ConnectPayload, VariableHeaderConnect},
-	packet_type::PacketType,
+use crate::packet::{
+	connect::{ConnectPayload, VariableHeaderConnect},
+	kind::PacketType,
 };
 
+/// Represents a single MQTT control packet, containing a fixed header,
+/// and optionally a variable header and payload.
 #[derive(Debug)]
 pub struct MqttControlPacket {
 	// Packet type and flags together make up the first byte.
@@ -29,7 +34,7 @@ impl MqttControlPacket {
 
 	pub fn encode(&self) -> Vec<u8> {
 		// OPTIMIZE: can we pre-allocate the length of the vector?
-		let mut data = vec![(self.header.kind as u8) << 4, 0];
+		let mut data = self.header.encode_to_vec();
 
 		if let Some(variable_header) = &self.variable_header {
 			variable_header.encode(&mut data);
@@ -56,6 +61,8 @@ impl MqttControlPacket {
 	}
 }
 
+/// Trait for types that can be encoded into a byte vector following the MQTT
+/// specification.
 pub(crate) trait EncodeMqtt {
 	fn encode(&self, data: &mut Vec<u8>);
 
@@ -64,6 +71,10 @@ pub(crate) trait EncodeMqtt {
 		self.encode(&mut data);
 		data
 	}
+}
+
+pub(crate) trait DecodeMqtt<T> {
+	fn decode(data: &[u8]) -> Result<T, ControlPacketParseError>;
 }
 
 #[derive(Debug, Clone)]
@@ -112,6 +123,13 @@ pub struct MqttFixedHeader {
 	pub remaining_length: u8,
 }
 
+impl EncodeMqtt for MqttFixedHeader {
+	fn encode(&self, data: &mut Vec<u8>) {
+		data.push((self.kind as u8) << 4);
+		data.push(self.remaining_length);
+	}
+}
+
 impl MqttFixedHeader {
 	pub fn parse(data: &[u8]) -> Result<Self, ControlPacketParseError> {
 		if data.len() < 2 {
@@ -128,10 +146,12 @@ impl MqttFixedHeader {
 	}
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ControlPacketParseError {
 	#[error("Unknown packet type {0:x}")]
 	UnknownPacketType(u8),
+	#[error("Unknown reason code {0:x}")]
+	UnknownReasonCode(u8),
 	#[error("Not enough data")]
 	NotEnoughData,
 	#[error("Unsupported QoS {0:x}")]

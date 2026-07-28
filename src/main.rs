@@ -28,29 +28,28 @@ async fn main() -> anyhow::Result<()> {
 	let read_token = token.clone();
 	let read_task = tokio::spawn(async move {
 		let mut buf = [0; 1024];
-		tokio::select! {
-			data = reader.read(&mut buf) => {
-				match data {
-					Ok(0) => {
-						tracing::warn!("Received 0 bytes, likely protocol error.");
-						read_token.cancel();
-					}
-					Ok(length) => {
-						tracing::debug!("Received {} bytes", length);
 
-						let packet = MqttControlPacket::parse(&buf[0..length]);
-						tracing::debug!("Packet: {:?}", packet);
+		loop {
+			let data = reader.read(&mut buf).await;
+			match data {
+				Ok(0) => {
+					tracing::warn!("Received 0 bytes, likely protocol error.");
+					read_token.cancel();
+					break;
+				}
+				Ok(length) => {
+					tracing::debug!("Received {} bytes", length);
 
-					}
-					Err(err) => {
-						tracing::error!("Error reading from socket: {:?}", err);
-					}
+					let packet = MqttControlPacket::parse(&buf[0..length]);
+					tracing::debug!("Packet: {:?}", packet);
+				}
+				Err(err) => {
+					tracing::error!("Error reading from socket: {:?}", err);
 				}
 			}
-			_ = read_token.cancelled() => {}
 		}
 
-		tracing::debug!("Reader closed");
+		tracing::trace!("Reader closed");
 		Ok::<_, anyhow::Error>(())
 	});
 
@@ -67,11 +66,12 @@ async fn main() -> anyhow::Result<()> {
 			_ = token.cancelled() => {}
 			_ = signal::ctrl_c() => {
 				tracing::debug!("Shutting down");
+				writer.shutdown().await?;
 				token.cancel();
 			},
 		}
 
-		tracing::debug!("Writer closed");
+		tracing::trace!("Writer closed");
 		Ok::<_, anyhow::Error>(())
 	});
 

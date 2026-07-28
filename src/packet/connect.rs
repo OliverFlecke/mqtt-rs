@@ -64,7 +64,7 @@ impl EncodeMqtt for ConnectPayload {
 }
 
 /// Contains flags that are required for a connection request.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectFlags {
 	username: bool,
 	password: bool,
@@ -89,6 +89,12 @@ impl Default for ConnectFlags {
 	}
 }
 
+impl EncodeMqtt for ConnectFlags {
+	fn encode(&self, data: &mut Vec<u8>) {
+		data.push(self.clone().into());
+	}
+}
+
 impl From<ConnectFlags> for u8 {
 	fn from(val: ConnectFlags) -> Self {
 		let mut value = 0;
@@ -110,8 +116,8 @@ impl TryFrom<u8> for ConnectFlags {
 			username: (value & 0x80) != 0,
 			password: (value & 0x40) != 0,
 			will_retain: (value & 0x20) != 0,
-			will_qos: WillQoS::from_repr(value & 0x18 >> 3)
-				.ok_or(ControlPacketParseError::UnsupportedQoS(value & 0x18 >> 3))?,
+			will_qos: WillQoS::from_repr((value >> 3) & 0x03)
+				.ok_or(ControlPacketParseError::UnsupportedQoS((value >> 3) & 0x03))?,
 			will: (value & 0x04) != 0,
 			clean_session: (value & 0x02) != 0,
 		})
@@ -123,7 +129,22 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_connect_flags() {
+	fn serialize_connect_flags_default() {
+		let flags = ConnectFlags::default();
+
+		let encoded: u8 = flags.into();
+		assert_eq!(encoded, 0b0000_0010);
+	}
+
+	#[test]
+	fn deserialize_connect_flags_default() {
+		let flags: ConnectFlags = 0b0000_0010.try_into().unwrap();
+
+		assert_eq!(ConnectFlags::default(), flags);
+	}
+
+	#[test]
+	fn serialize_connect_flags() {
 		let flags = ConnectFlags {
 			username: true,
 			password: true,
@@ -133,7 +154,35 @@ mod tests {
 			clean_session: false,
 		};
 
-		let encoded: u8 = flags.into();
-		assert_eq!(encoded, 0b1010_1011);
+		let encoded: u8 = flags.clone().into();
+		assert_eq!(encoded, 0b1111_0100);
+
+		let decoded: ConnectFlags = encoded.try_into().unwrap();
+		assert_eq!(flags, decoded);
+	}
+
+	#[test]
+	fn deserialize_connect_flags() {
+		let flags = ConnectFlags {
+			username: true,
+			password: true,
+			will_retain: true,
+			will_qos: WillQoS::ExactlyOnce,
+			will: true,
+			clean_session: false,
+		};
+
+		let encoded = 0b1111_0100;
+		let decoded: ConnectFlags = encoded.try_into().unwrap();
+
+		assert_eq!(flags, decoded);
+	}
+
+	#[test]
+	fn deserialize_connect_flags_with_incorrect_will_qos() {
+		let encoded = 0b0001_1000;
+		let decoded: Result<ConnectFlags, ControlPacketParseError> = encoded.try_into();
+
+		assert_eq!(Err(ControlPacketParseError::UnsupportedQoS(3)), decoded);
 	}
 }
