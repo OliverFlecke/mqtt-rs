@@ -55,4 +55,3 @@ pub enum ReasonCode {
 	SubscriptionIdentifiersNotSupported = 0xA1, // SUBACK, DISCONNECT
 	WildcardSubscriptionsNotSupported = 0xA2,   // SUBACK, DISCONNECT
 }
-

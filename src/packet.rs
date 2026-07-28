@@ -3,7 +3,7 @@ use crate::packet_type::PacketType;
 #[derive(Debug)]
 pub struct MqttControlPacket {
 	// Packet type and flags together make up the first byte.
-	header: MqttFixedHeader,
+	pub header: MqttFixedHeader,
 }
 
 impl MqttControlPacket {
@@ -19,8 +19,8 @@ impl MqttControlPacket {
 
 #[derive(Debug, Clone)]
 pub struct MqttFixedHeader {
-	kind: PacketType,
-	remaining_length: u8,
+	pub kind: PacketType,
+	pub remaining_length: u8,
 }
 
 impl MqttFixedHeader {
