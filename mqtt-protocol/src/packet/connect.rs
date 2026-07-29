@@ -1,5 +1,9 @@
+use std::io;
+use std::io::Cursor;
+use std::io::Write;
+
 use crate::packet::{
-	self, ControlPacketParseError, DecodeMqtt, EncodeMqtt, MqttControlPacket, MqttFixedHeader,
+	self, ControlPacketParseError, DecodeMqtt, Encode, MqttControlPacket, MqttFixedHeader,
 	ProtocolVersion, QoS, kind::PacketType, property::Properties,
 };
 
@@ -29,7 +33,7 @@ impl Default for VariableHeader {
 		Self {
 			version: ProtocolVersion::V5,
 			connect_flags: ConnectFlags::default(),
-			keep_alive: 10,
+			keep_alive: 60,
 			properties: None,
 		}
 	}
@@ -46,15 +50,15 @@ impl VariableHeader {
 	}
 }
 
-impl EncodeMqtt for VariableHeader {
-	fn encode(&self, data: &mut Vec<u8>) {
-		data.extend_from_slice(&[0x00, 0x04]);
-		data.extend_from_slice(b"MQTT");
-		data.push(self.version as u8);
-		data.push(self.connect_flags.clone().into());
-		data.extend_from_slice(&self.keep_alive.to_be_bytes());
+impl Encode for VariableHeader {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		"MQTT".encode(w)?;
+		w.write_all(&[self.version as u8])?;
+		self.connect_flags.encode(w)?;
+		w.write_all(&self.keep_alive.to_be_bytes())?;
+		self.properties.encode(w)?;
 
-		self.properties.encode(data);
+		Ok(())
 	}
 }
 
@@ -80,20 +84,11 @@ pub struct Payload {
 	pub client_id: Option<String>,
 }
 
-impl EncodeMqtt for Payload {
-	fn encode(&self, data: &mut Vec<u8>) {
-		let len: u16 = self.client_id.as_ref().map(|s| s.len() as u16).unwrap_or(0);
-		tracing::debug!(
-			"Client ID length: {} -> {:x?}",
-			len,
-			self.client_id.as_ref().map(|s| s.as_bytes())
-		);
+impl Encode for Payload {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		self.client_id.as_deref().encode(w)?;
 
-		data.extend_from_slice(&len.to_be_bytes());
-
-		if let Some(client_id) = &self.client_id {
-			data.extend_from_slice(client_id.as_bytes());
-		}
+		Ok(())
 	}
 }
 
@@ -123,9 +118,9 @@ impl Default for ConnectFlags {
 	}
 }
 
-impl EncodeMqtt for ConnectFlags {
-	fn encode(&self, data: &mut Vec<u8>) {
-		data.push(self.clone().into());
+impl Encode for ConnectFlags {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		w.write_all(&[self.clone().into()])
 	}
 }
 
@@ -218,5 +213,29 @@ mod tests {
 		let decoded: Result<ConnectFlags, ControlPacketParseError> = encoded.try_into();
 
 		assert_eq!(Err(ControlPacketParseError::UnsupportedQoS(3)), decoded);
+	}
+
+	#[test]
+	fn encode_variable_header() {
+		let header = VariableHeader::default();
+		let mut cursor = Cursor::new(Vec::new());
+		header.encode(&mut cursor).unwrap();
+
+		assert_eq!(
+			cursor.into_inner(),
+			vec![
+				0x00,
+				0x04,
+				b'M',
+				b'Q',
+				b'T',
+				b'T',
+				0x05,        // version
+				0b0000_0010, // flags
+				0x00,
+				60,   // keep alive, 2 bytes
+				0x00  // properties, empty
+			]
+		);
 	}
 }

@@ -1,6 +1,7 @@
+use std::io::{self, Cursor};
+
 use crate::packet::{
-	self, EncodeMqtt, MqttControlPacket, MqttFixedHeader, QoS, kind::PacketType,
-	property::Properties,
+	self, Encode, MqttControlPacket, MqttFixedHeader, QoS, kind::PacketType, property::Properties,
 };
 
 impl MqttControlPacket {
@@ -32,18 +33,20 @@ pub struct VariableHeader {
 	pub properties: Option<Properties>,
 }
 
-impl EncodeMqtt for VariableHeader {
-	fn encode(&self, data: &mut Vec<u8>) {
-		self.topic.as_str().encode(data);
-		self.properties.encode(data);
+impl Encode for VariableHeader {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		self.topic.as_str().encode(w)?;
+		self.properties.encode(w)?;
+
+		Ok(())
 	}
 }
 
 #[derive(Debug, Clone)]
 pub struct Payload(Vec<u8>);
 
-impl EncodeMqtt for Payload {
-	fn encode(&self, data: &mut Vec<u8>) {
-		self.0.as_slice().encode(data);
+impl Encode for Payload {
+	fn encode(&self, data: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		self.0.as_slice().encode(data)
 	}
 }

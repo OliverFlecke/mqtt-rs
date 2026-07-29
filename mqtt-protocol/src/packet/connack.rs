@@ -1,5 +1,7 @@
+use std::io::{self, Cursor, Write};
+
 use crate::packet::{
-	ControlPacketParseError, DecodeMqtt, EncodeMqtt, property::Properties, reason::ReasonCode,
+	ControlPacketParseError, DecodeMqtt, Encode, property::Properties, reason::ReasonCode,
 };
 
 #[derive(Debug, Clone)]
@@ -9,10 +11,9 @@ pub struct VariableHeader {
 	pub properties: Option<Properties>,
 }
 
-impl EncodeMqtt for VariableHeader {
-	fn encode(&self, data: &mut Vec<u8>) {
-		data.push(self.session_present as u8);
-		data.push(self.reason_code as u8);
+impl Encode for VariableHeader {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		w.write_all(&[self.session_present as u8, self.reason_code as u8])
 	}
 }
 

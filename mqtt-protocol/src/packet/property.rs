@@ -1,4 +1,6 @@
-use crate::packet::{ControlPacketParseError, DecodeMqtt, EncodeMqtt};
+use std::io::{self, Cursor, Write};
+
+use crate::packet::{ControlPacketParseError, DecodeMqtt, Encode};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -37,18 +39,18 @@ pub enum PropertyId {
 #[derive(Debug, Clone, Default)]
 pub struct Properties {}
 
-impl EncodeMqtt for Properties {
-	fn encode(&self, data: &mut Vec<u8>) {
-		data.push(0);
+impl Encode for Properties {
+	fn encode(&self, _w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		// TODO: implement. Needs to write overall length and each property
+		Ok(())
 	}
 }
 
-impl EncodeMqtt for Option<Properties> {
-	fn encode(&self, data: &mut Vec<u8>) {
-		if let Some(properties) = self {
-			properties.encode(data);
-		} else {
-			data.push(0);
+impl Encode for Option<Properties> {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		match self {
+			Some(properties) => properties.encode(w),
+			None => w.write_all(&[0]),
 		}
 	}
 }

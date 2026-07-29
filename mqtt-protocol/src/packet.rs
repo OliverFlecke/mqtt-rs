@@ -8,6 +8,8 @@ mod publish;
 mod reason;
 pub(crate) mod util;
 
+use std::io::{self, Cursor, Write};
+
 use crate::packet::kind::PacketType;
 
 pub use connect::connect;
@@ -37,34 +39,33 @@ impl MqttControlPacket {
 			header,
 		})
 	}
+}
 
-	pub fn encode(&self) -> Vec<u8> {
-		// OPTIMIZE: can we pre-allocate the length of the vector?
-		let mut data = self.header.encode_to_vec();
-
-		if let Some(variable_header) = &self.variable_header {
-			variable_header.encode(&mut data);
-		}
-		if let Some(payload) = &self.payload {
-			payload.encode(&mut data);
-		}
+impl Encode for MqttControlPacket {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		self.header.encode(w)?;
+		self.variable_header.encode(w)?;
+		self.payload.encode(w)?;
 
 		// Update remaining length
-		data[1] = data.len() as u8 - 2;
+		let pos = w.position();
+		w.set_position(1);
+		w.write_all(&[pos as u8 - 2])?;
+		w.set_position(pos);
 
-		data
+		Ok(())
 	}
 }
 
 /// Trait for types that can be encoded into a byte vector following the MQTT
 /// specification.
-pub(crate) trait EncodeMqtt {
-	fn encode(&self, data: &mut Vec<u8>);
+pub trait Encode {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()>;
 
-	fn encode_to_vec(&self) -> Vec<u8> {
-		let mut data = Vec::new();
-		self.encode(&mut data);
-		data
+	fn encode_to_vec(&self) -> io::Result<Vec<u8>> {
+		let mut data = Cursor::new(Vec::new());
+		self.encode(&mut data)?;
+		Ok(data.into_inner())
 	}
 }
 
@@ -82,13 +83,22 @@ pub enum VariableHeader {
 	Publish(publish::VariableHeader),
 }
 
-impl EncodeMqtt for VariableHeader {
-	fn encode(&self, data: &mut Vec<u8>) {
+impl Encode for VariableHeader {
+	fn encode(&self, data: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		match self {
 			VariableHeader::Connect(connect) => connect.encode(data),
 			VariableHeader::ConnAck(connack) => connack.encode(data),
 			VariableHeader::Disconnect(disconnect) => disconnect.encode(data),
 			VariableHeader::Publish(publish) => publish.encode(data),
+		}
+	}
+}
+
+impl Encode for Option<VariableHeader> {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		match self {
+			Some(variable_header) => variable_header.encode(w),
+			None => Ok(()),
 		}
 	}
 }
@@ -110,17 +120,30 @@ impl VariableHeader {
 	}
 }
 
+/// Payload for a packet.
+///
+/// This represents the various payloads that each packet can have. Note
+/// that not all packet types has a payload.
 #[derive(Debug, Clone)]
 pub enum Payload {
 	Connect(connect::Payload),
 	Publish(publish::Payload),
 }
 
-impl EncodeMqtt for Payload {
-	fn encode(&self, data: &mut Vec<u8>) {
+impl Encode for Payload {
+	fn encode(&self, data: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		match self {
 			Payload::Connect(connect) => connect.encode(data),
 			Payload::Publish(publish) => publish.encode(data),
+		}
+	}
+}
+
+impl Encode for Option<Payload> {
+	fn encode(&self, data: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		match self {
+			Some(payload) => payload.encode(data),
+			None => Ok(()),
 		}
 	}
 }
@@ -155,10 +178,9 @@ impl MqttFixedHeader {
 	}
 }
 
-impl EncodeMqtt for MqttFixedHeader {
-	fn encode(&self, data: &mut Vec<u8>) {
-		data.push((self.kind as u8) << 4);
-		data.push(self.remaining_length);
+impl Encode for MqttFixedHeader {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		w.write_all(&[(self.kind as u8) << 4, self.remaining_length])
 	}
 }
 
