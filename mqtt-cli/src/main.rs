@@ -1,9 +1,7 @@
 use clap::Parser;
-use mqtt::{
-	cli::{Cli, Command},
-	client::MqttClient,
-	packet::{MqttControlPacket, connect, create_disconnect},
-};
+use mqtt_cli::{Cli, Command};
+use mqtt_client::MqttClient;
+use mqtt_protocol::packet::{MqttControlPacket, connect, create_disconnect};
 use tokio::signal;
 use tracing::level_filters::LevelFilter;
 

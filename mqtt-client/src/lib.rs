@@ -10,7 +10,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::packet::{MqttControlPacket, create_ping_req};
+use mqtt_protocol::packet::{MqttControlPacket, create_ping_req};
 
 pub struct MqttClient {
 	cancellation_token: CancellationToken,

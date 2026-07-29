@@ -274,11 +274,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "mqtt"
+name = "mqtt-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "mqtt-client",
+ "mqtt-protocol",
  "rstest",
  "strum",
  "thiserror",
@@ -286,6 +288,26 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "mqtt-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "mqtt-protocol",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "mqtt-protocol"
+version = "0.1.0"
+dependencies = [
+ "strum",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]
