@@ -22,6 +22,9 @@ pub struct Cli {
 	#[arg(short, long)]
 	pub stay_connected: bool,
 
+	#[arg(long, default_value_t = true)]
+	pub heartbeat: bool,
+
 	#[command(subcommand)]
 	pub command: Command,
 }

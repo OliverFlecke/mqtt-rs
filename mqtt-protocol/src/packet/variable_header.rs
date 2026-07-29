@@ -1,6 +1,8 @@
 use std::io::{self, Cursor};
 
-use crate::packet::{self, ControlPacketParseError, Decode, Encode, kind::PacketType};
+use crate::packet::{
+	self, ControlPacketParseError, Decode, DecodeFromType, Encode, kind::PacketType,
+};
 
 /// Represents the various variable headers that can be used in a packet.
 #[derive(Debug, Clone)]
@@ -35,29 +37,35 @@ impl Encode for Option<VariableHeader> {
 	}
 }
 
-impl VariableHeader {
-	pub fn decode(
+impl DecodeFromType<VariableHeader> for VariableHeader {
+	fn decode_from_type(
 		kind: PacketType,
 		data: &[u8],
-	) -> Result<Option<(Self, &[u8])>, ControlPacketParseError> {
+	) -> Result<(Option<Self>, &[u8]), ControlPacketParseError> {
+		tracing::trace!("Decoding variable header: {:?} => {:x?}", kind, data);
+
 		match kind {
 			PacketType::Connect => {
-				packet::connect::Header::decode(data).map(|(h, d)| Some((Self::Connect(h), d)))
+				packet::connect::Header::decode(data).map(|(h, d)| (Some(Self::Connect(h)), d))
 			}
 			PacketType::ConnAck => {
-				packet::connack::Header::decode(data).map(|(h, d)| Some((Self::ConnAck(h), d)))
+				packet::connack::Header::decode(data).map(|(h, d)| (Some(Self::ConnAck(h)), d))
 			}
 			PacketType::Disconnect => packet::disconnect::Header::decode(data)
-				.map(|(h, d)| Some((Self::Disconnect(h), d))),
+				.map(|(h, d)| (Some(Self::Disconnect(h)), d)),
 			PacketType::SubAck => {
-				packet::suback::Header::decode(data).map(|(h, d)| Some((Self::SubAck(h), d)))
+				packet::suback::Header::decode(data).map(|(h, d)| (Some(Self::SubAck(h)), d))
 			}
 
-			PacketType::PingReq | PacketType::PingResp => Ok(None),
+			PacketType::Publish => {
+				packet::publish::Header::decode(data).map(|(h, d)| (Some(Self::Publish(h)), d))
+			}
+
+			PacketType::PingReq | PacketType::PingResp => Ok((None, data)),
 
 			_ => {
 				tracing::warn!("Decoding of {:?} is not yet supported", kind);
-				Ok(None)
+				Ok((None, data))
 			}
 		}
 	}

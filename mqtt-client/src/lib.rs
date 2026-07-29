@@ -69,8 +69,8 @@ impl MqttClient {
 			}
 		});
 
-		let tx_health = tx_write.clone();
-		tokio::spawn(async { health_check(tx_health).await });
+		// let tx_health = tx_write.clone();
+		// tokio::spawn(async { health_check(tx_health).await });
 
 		Ok((tx_write, rx_read))
 	}
@@ -81,6 +81,7 @@ type Client = (
 	mpsc::Receiver<MqttControlPacket>,
 );
 
+#[allow(dead_code)]
 async fn health_check(writer: mpsc::Sender<MqttControlPacket>) -> Result<(), anyhow::Error> {
 	loop {
 		sleep(Duration::from_secs(5)).await;

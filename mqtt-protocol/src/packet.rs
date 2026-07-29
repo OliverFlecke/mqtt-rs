@@ -15,7 +15,10 @@ mod suback;
 mod subscribe;
 mod variable_header;
 
-use std::io::{self, Cursor};
+use std::{
+	io::{self, Cursor},
+	str::Utf8Error,
+};
 
 pub use control_packet::MqttControlPacket;
 pub use kind::PacketType;
@@ -40,6 +43,13 @@ pub(crate) trait Decode<T> {
 	fn decode(data: &[u8]) -> Result<(T, &[u8]), ControlPacketParseError>;
 }
 
+pub(crate) trait DecodeFromType<T> {
+	fn decode_from_type(
+		kind: PacketType,
+		data: &[u8],
+	) -> Result<(Option<T>, &[u8]), ControlPacketParseError>;
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ControlPacketParseError {
 	#[error("Unknown packet type {0:x}")]
@@ -56,4 +66,10 @@ pub enum ControlPacketParseError {
 	UnsupportedProtocol(u8),
 	#[error("Invalid variable byte integer {0:x}")]
 	InvalidVariableByteInteger(u32),
+	#[error("Invalid UTF-8: {0}")]
+	InvalidUtf8(Utf8Error),
+	#[error("Variable Byte Integer is more than 4 bytes")]
+	InvalidVariableByteIntegerLength,
+	#[error("Unknown property {0:x}")]
+	UnknownProperty(u8),
 }

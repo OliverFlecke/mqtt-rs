@@ -1,6 +1,6 @@
 use std::io::{self, Cursor};
 
-use crate::packet::{self, Encode};
+use crate::packet::{self, Decode, DecodeFromType, Encode, PacketType};
 
 /// Payload for a packet.
 ///
@@ -30,6 +30,28 @@ impl Encode for Option<Payload> {
 		match self {
 			Some(payload) => payload.encode(data),
 			None => Ok(()),
+		}
+	}
+}
+
+impl DecodeFromType<Payload> for Payload {
+	fn decode_from_type(
+		kind: packet::PacketType,
+		data: &[u8],
+	) -> Result<(Option<Self>, &[u8]), packet::ControlPacketParseError> {
+		tracing::debug!("Decoding payload: {:?} => {:x?}", kind, data);
+
+		match kind {
+			PacketType::Publish => {
+				packet::publish::Payload::decode(data).map(|(p, d)| (Some(Self::Publish(p)), d))
+			}
+
+			PacketType::PingReq | PacketType::PingResp => Ok((None, data)),
+
+			_ => {
+				tracing::warn!("Decoding of {:?} is not yet supported", kind);
+				Ok((None, data))
+			}
 		}
 	}
 }

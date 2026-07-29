@@ -5,7 +5,7 @@ use crate::{
 	util::VariableByteInteger,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, strum::FromRepr)]
 #[repr(u8)]
 #[allow(dead_code)]
 pub enum PropertyId {
@@ -75,6 +75,51 @@ impl Encode for Option<Properties> {
 
 impl Decode<Option<Properties>> for Option<Properties> {
 	fn decode(data: &[u8]) -> Result<(Option<Properties>, &[u8]), ControlPacketParseError> {
-		Ok((None, data))
+		let (property_length, data) = VariableByteInteger::decode(data)?;
+		let len: usize = property_length.into();
+
+		if len == 0 {
+			return Ok((None, &data[len..]));
+		}
+
+		let mut properties = Properties::default();
+		let mut i = 0;
+
+		while i < len {
+			match PropertyId::from_repr(data[i]) {
+				Some(PropertyId::SubscriptionIdentifier) => {
+					let (sub_id, _) = VariableByteInteger::decode(&data[i + 1..])?;
+					properties.subscription_identifier = Some(sub_id);
+					i += 1 + sub_id.num_of_bytes();
+				}
+
+				// TODO: implement remaining properties
+				Some(id) => {
+					tracing::warn!("Decoding of property id not yet implemented: {:x?}", id);
+					i += 1; // Just to read through the properties that are not yet implemented.
+					// Not perfect, as it might hit already supported values.
+				}
+				None => return Err(ControlPacketParseError::UnknownProperty(data[i])),
+			}
+		}
+
+		Ok((Some(properties), &data[len..]))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn decode_subscription_identifier() {
+		let data = &[0x02, 0x0b, 0x0a];
+		let (property, remaining) = Option::<Properties>::decode(data).unwrap();
+
+		assert_eq!(
+			property.unwrap().subscription_identifier,
+			Some(10.try_into().unwrap())
+		);
+		assert_eq!(remaining, &[]);
 	}
 }

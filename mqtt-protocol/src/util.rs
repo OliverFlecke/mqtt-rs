@@ -2,7 +2,7 @@ pub mod variable_byte_integer;
 
 use std::io::{self, Cursor, Write};
 
-use crate::packet::Encode;
+use crate::packet::{ControlPacketParseError, Decode, Encode};
 
 pub use variable_byte_integer::VariableByteInteger;
 
@@ -12,6 +12,28 @@ impl Encode for &str {
 		w.write_all(self.as_bytes())?;
 
 		Ok(())
+	}
+}
+
+impl Decode<Vec<u8>> for Vec<u8> {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), crate::packet::ControlPacketParseError> {
+		let len = u16::from_be_bytes(data[0..2].try_into().unwrap()) as usize;
+		let (value, rest) = data[2..].split_at(len);
+
+		Ok((value.to_vec(), rest))
+	}
+}
+
+impl Decode<String> for String {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), crate::packet::ControlPacketParseError> {
+		let len = u16::from_be_bytes(data[0..2].try_into().unwrap()) as usize;
+		let (value, rest) = data[2..].split_at(len);
+
+		let s = str::from_utf8(value)
+			.map_err(ControlPacketParseError::InvalidUtf8)?
+			.to_string();
+
+		Ok((s, rest))
 	}
 }
 

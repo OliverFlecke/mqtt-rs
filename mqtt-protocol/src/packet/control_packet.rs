@@ -1,7 +1,7 @@
 use std::io::{self, Cursor, Write};
 
 use crate::packet::{
-	ControlPacketParseError, Decode, Encode, Payload, VariableHeader,
+	ControlPacketParseError, Decode, DecodeFromType, Encode, Payload, VariableHeader,
 	fixed_header::MqttFixedHeader, kind::PacketType,
 };
 
@@ -42,16 +42,24 @@ impl MqttControlPacket {
 		tracing::trace!("Parsing packet from bytes {:x?}", data);
 
 		let (header, data) = MqttFixedHeader::decode(data)?;
-		let (variable_header, _data) = match VariableHeader::decode(header.kind(), data)? {
-			Some((variable_header, rest)) => (Some(variable_header), rest),
-			None => (None, data),
-		};
+		let (variable_header, data) = VariableHeader::decode_from_type(header.kind(), data)?;
+		let (payload, _data) = Payload::decode_from_type(header.kind(), data)?;
+
+		// TODO: This would be good to have, as we should not expect to have any data
+		// left after parsing the packet.
+		// debug_assert!(data.is_empty()); // There should be no data left
 
 		Ok(Self {
 			header,
 			variable_header,
-			payload: None, // TODO: Parse payload
+			payload,
 		})
+	}
+}
+
+impl From<MqttControlPacket> for (Option<VariableHeader>, Option<Payload>) {
+	fn from(val: MqttControlPacket) -> Self {
+		(val.variable_header, val.payload)
 	}
 }
 

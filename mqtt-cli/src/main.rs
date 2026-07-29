@@ -3,7 +3,7 @@ use std::time::Duration;
 use clap::Parser;
 use mqtt_cli::{Cli, Command};
 use mqtt_client::MqttClient;
-use mqtt_protocol::packet::{MqttControlPacket, VariableHeader};
+use mqtt_protocol::packet::{MqttControlPacket, Payload, VariableHeader};
 use tokio::{signal, time::sleep};
 use tracing::level_filters::LevelFilter;
 
@@ -24,8 +24,25 @@ async fn main() -> anyhow::Result<()> {
 	let reader = tokio::spawn(async move {
 		while let Some(packet) = rx.recv().await {
 			tracing::debug!("Packet received: {:x?}", packet.kind());
-			if let Some(VariableHeader::Disconnect(header)) = packet.header() {
-				tracing::info!("Disconnected with reason code: {:?}", header.reason_code());
+
+			match packet.into() {
+				(Some(VariableHeader::Disconnect(header)), _) => {
+					tracing::info!("Disconnected with reason code: {:?}", header.reason_code());
+				}
+				(Some(VariableHeader::SubAck(_)), _) => {
+					// TODO: track the subscription and related topic to print
+					// the topic that we have subscribed to.
+					tracing::info!("Subscribed!");
+				}
+				(Some(VariableHeader::Publish(header)), Some(Payload::Publish(payload))) => {
+					let msg: String = payload.try_into().expect("always to be valid UTF-8");
+					tracing::info!(
+						"Received message on topic: {:} -> {:?}",
+						header.topic(),
+						msg
+					);
+				}
+				_ => (),
 			}
 		}
 	});

@@ -96,6 +96,12 @@ impl Encode for Payload {
 	}
 }
 
+impl Decode<Payload> for Payload {
+	fn decode(_data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		todo!()
+	}
+}
+
 /// Contains flags that are required for a connection request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectFlags {

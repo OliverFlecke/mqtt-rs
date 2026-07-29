@@ -10,4 +10,5 @@ thiserror = { workspace = true, default-features = false }
 tracing = { workspace = true, default-features = false }
 
 [dev-dependencies]
+hex = "0.4.3"
 rstest = { workspace = true }

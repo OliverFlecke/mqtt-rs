@@ -1,12 +1,36 @@
 use std::io::{self, Cursor, Write};
 
-use crate::packet::{ControlPacketParseError, Encode};
+use crate::packet::{ControlPacketParseError, Decode, Encode};
 
 /// Represents a variable byte integer.
 ///
 /// Maximum value is the maximum value of a `u32`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VariableByteInteger(u32);
+
+impl VariableByteInteger {
+	pub fn num_of_bytes(&self) -> usize {
+		match self.0 {
+			0..=127 => 1,
+			128..=16_383 => 2,
+			16_384..=2_097_151 => 3,
+			2_097_152..=268_435_455 => 4,
+			_ => panic!("Invalid value for variable byte integer"),
+		}
+	}
+}
+
+impl From<VariableByteInteger> for u32 {
+	fn from(val: VariableByteInteger) -> Self {
+		val.0
+	}
+}
+
+impl From<VariableByteInteger> for usize {
+	fn from(val: VariableByteInteger) -> Self {
+		val.0 as usize
+	}
+}
 
 impl TryFrom<u32> for VariableByteInteger {
 	type Error = ControlPacketParseError;
@@ -34,6 +58,29 @@ impl Encode for VariableByteInteger {
 		}
 
 		Ok(())
+	}
+}
+
+impl Decode<VariableByteInteger> for VariableByteInteger {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		let mut multiplier = 1u32;
+		let mut value = 0u32;
+		let mut len = 0usize;
+
+		for byte in data {
+			value += ((*byte as u32) & 127) * multiplier;
+			if multiplier > 128 * 128 * 128 {
+				return Err(ControlPacketParseError::InvalidVariableByteIntegerLength);
+			}
+			multiplier *= 128;
+			len += 1;
+
+			if ((*byte as u32) & 128) == 0 {
+				break;
+			}
+		}
+
+		Ok((Self(value), &data[len..]))
 	}
 }
 
