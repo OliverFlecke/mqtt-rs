@@ -5,19 +5,19 @@ use crate::packet::{
 };
 
 #[derive(Debug, Clone)]
-pub struct VariableHeader {
+pub struct Header {
 	pub session_present: bool,
 	pub reason_code: ReasonCode,
 	pub properties: Option<Properties>,
 }
 
-impl Encode for VariableHeader {
+impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		w.write_all(&[self.session_present as u8, self.reason_code as u8])
 	}
 }
 
-impl Decode<VariableHeader> for VariableHeader {
+impl Decode<Header> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let session_present = data[0] == 1;
 		let reason_code = ReasonCode::from_repr(data[1])

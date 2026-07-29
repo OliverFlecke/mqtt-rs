@@ -12,27 +12,27 @@ impl MqttControlPacket {
 	pub fn subscribe(topics: Vec<TopicFilter>) -> Self {
 		debug_assert_ne!(topics.len(), 0);
 
-		Self {
-			header: PacketType::Subscribe.into(),
-			variable_header: Some(packet::VariableHeader::Subscribe(VariableHeader {
-				packet_id: 10, // FIXME: hardcoded number
+		Self::new(
+			PacketType::Subscribe,
+			Some(packet::VariableHeader::Subscribe(Header {
+				packet_id: 20, // FIXME: hardcoded number
 				properties: Some(Properties {
 					subscription_identifier: Some(VariableByteInteger::try_from(10).unwrap()), // FIXME: hardcoded number
 					..Default::default()
 				}),
 			})),
-			payload: Some(packet::Payload::Subscribe(Payload { topics })),
-		}
+			Some(packet::Payload::Subscribe(Payload { topics })),
+		)
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableHeader {
+pub struct Header {
 	pub packet_id: u16,
 	pub properties: Option<Properties>,
 }
 
-impl Encode for VariableHeader {
+impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		w.write_all(&self.packet_id.to_be_bytes())?;
 		self.properties.encode(w)?;
@@ -41,7 +41,7 @@ impl Encode for VariableHeader {
 	}
 }
 
-impl Decode<VariableHeader> for VariableHeader {
+impl Decode<Header> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let packet_id = u16::from_be_bytes([data[0], data[1]]);
 		let (properties, data) = Option::<Properties>::decode(&data[2..])?;

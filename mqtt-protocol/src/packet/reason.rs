@@ -3,9 +3,9 @@
 pub enum ReasonCode {
 	Success = 0x00, // CONNACK, PUBACK, PUBREC, PUBREL, PUBCOMP, UNSUBACK, AUTH
 	// DISCONNECT treats this as a "Normal Disconnect"
-	// GrantedQoS0 = 0x00, // SUBACK
-	// GrantedQoS1 = 0x01, // SUBACK
-	// GrantedQOS2 = 0x02, // SUBACK
+	// SUBACK treats this as "GrantedQoS 0"
+	GrantedQoS1 = 0x01,               // SUBACK
+	GrantedQOS2 = 0x02,               // SUBACK
 	DisconnectWithWillMessage = 0x04, // DISCONNECT
 
 	NoMatchingSubscribers = 0x10, // PUBACK, PUBREC

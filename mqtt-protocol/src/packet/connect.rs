@@ -10,16 +10,16 @@ use crate::packet::{
 impl MqttControlPacket {
 	/// Create a new connect packet
 	pub fn connect(client_id: Option<String>) -> Self {
-		Self {
-			header: PacketType::Connect.into(),
-			variable_header: Some(packet::VariableHeader::Connect(VariableHeader::default())),
-			payload: Some(packet::Payload::Connect(Payload { client_id })),
-		}
+		Self::new(
+			PacketType::Connect,
+			Some(packet::VariableHeader::Connect(Header::default())),
+			Some(packet::Payload::Connect(Payload { client_id })),
+		)
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableHeader {
+pub struct Header {
 	version: ProtocolVersion,
 	connect_flags: ConnectFlags,
 	keep_alive: u16,
@@ -27,7 +27,7 @@ pub struct VariableHeader {
 	properties: Option<Properties>,
 }
 
-impl Default for VariableHeader {
+impl Default for Header {
 	fn default() -> Self {
 		Self {
 			version: ProtocolVersion::V5,
@@ -38,7 +38,7 @@ impl Default for VariableHeader {
 	}
 }
 
-impl VariableHeader {
+impl Header {
 	pub fn new(flags: Option<ConnectFlags>) -> Self {
 		Self {
 			version: ProtocolVersion::V5,
@@ -49,7 +49,7 @@ impl VariableHeader {
 	}
 }
 
-impl Encode for VariableHeader {
+impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		"MQTT".encode(w)?;
 		w.write_all(&[self.version as u8])?;
@@ -61,7 +61,7 @@ impl Encode for VariableHeader {
 	}
 }
 
-impl Decode<VariableHeader> for VariableHeader {
+impl Decode<Header> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		if [0x00, 0x04, b'M', b'Q', b'T', b'T'] != data[0..6] {
 			return Err(ControlPacketParseError::IncorrectProtocol);
@@ -221,7 +221,7 @@ mod tests {
 
 	#[test]
 	fn encode_variable_header() {
-		let header = VariableHeader::default();
+		let header = Header::default();
 		let mut cursor = Cursor::new(Vec::new());
 		header.encode(&mut cursor).unwrap();
 

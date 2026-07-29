@@ -34,13 +34,29 @@ async fn main() -> anyhow::Result<()> {
 		Command::Connect => {
 			tx.send(MqttControlPacket::connect(args.client_id)).await?;
 		}
-		Command::Publish { topic, message } => {
+		Command::Publish {
+			topic,
+			message,
+			repeat_frequency_ms,
+		} => {
 			tx.send(MqttControlPacket::connect(args.client_id)).await?;
-			tx.send(MqttControlPacket::create_publish(
-				topic,
-				message.into_bytes(),
-			))
-			.await?;
+
+			let packet = MqttControlPacket::publish(topic, message.into_bytes());
+			let tx_publish = tx.clone();
+			tokio::spawn(async move {
+				loop {
+					if let Err(err) = tx_publish.send(packet.clone()).await {
+						tracing::error!("Error sending packet: {:?}", err);
+						break;
+					}
+
+					if let Some(repeat_frequency_ms) = repeat_frequency_ms {
+						sleep(Duration::from_millis(repeat_frequency_ms)).await;
+					} else {
+						break;
+					}
+				}
+			});
 		}
 		Command::Subscribe { topic } => {
 			tracing::debug!("Subscribing to topic: {:?}", topic);
@@ -58,11 +74,13 @@ async fn main() -> anyhow::Result<()> {
 	tokio::select! {
 		_ = reader => {}
 		_ = signal::ctrl_c() => {
-			tx.send(MqttControlPacket::create_disconnect()).await?;
-
+			tx.send(MqttControlPacket::disconnect()).await?;
 			tracing::debug!("Shutting down");
 		},
 	}
+
+	// TODO: need a way to flush the messages out through the client so the
+	// bytes has actually been sent over the network.
 
 	Ok(())
 }

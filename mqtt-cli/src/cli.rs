@@ -34,6 +34,10 @@ pub enum Command {
 		topic: String,
 		#[arg()]
 		message: String,
+
+		/// Indicate how frequent the message should be sent
+		#[arg(short, long)]
+		repeat_frequency_ms: Option<u64>,
 	},
 	Subscribe {
 		#[arg()]

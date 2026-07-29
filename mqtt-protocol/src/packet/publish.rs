@@ -3,16 +3,16 @@ use std::io::{self, Cursor};
 use crate::packet::{self, Encode, MqttControlPacket, QoS, kind::PacketType, property::Properties};
 
 impl MqttControlPacket {
-	pub fn create_publish(topic: String, payload: Vec<u8>) -> Self {
-		Self {
-			header: PacketType::Publish.into(),
-			variable_header: Some(packet::VariableHeader::Publish(VariableHeader {
+	pub fn publish(topic: String, payload: Vec<u8>) -> Self {
+		Self::new(
+			PacketType::Publish,
+			Some(packet::VariableHeader::Publish(Header {
 				topic,
 				packet_identifier: None,
 				properties: None,
 			})),
-			payload: Some(packet::Payload::Publish(Payload(payload))),
-		}
+			Some(packet::Payload::Publish(Payload(payload))),
+		)
 	}
 }
 
@@ -25,13 +25,13 @@ pub struct Flags {
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableHeader {
+pub struct Header {
 	pub topic: String,
 	pub packet_identifier: Option<String>,
 	pub properties: Option<Properties>,
 }
 
-impl Encode for VariableHeader {
+impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		self.topic.as_str().encode(w)?;
 		self.properties.encode(w)?;

@@ -6,25 +6,25 @@ use crate::packet::{
 };
 
 impl MqttControlPacket {
-	pub fn create_disconnect() -> Self {
-		Self {
-			header: PacketType::Disconnect.into(),
-			variable_header: Some(packet::VariableHeader::Disconnect(VariableHeader {
+	pub fn disconnect() -> Self {
+		Self::new(
+			PacketType::Disconnect,
+			Some(packet::VariableHeader::Disconnect(Header {
 				reason_code: ReasonCode::Success,
 				properties: None,
 			})),
-			payload: None,
-		}
+			None,
+		)
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableHeader {
+pub struct Header {
 	reason_code: ReasonCode,
 	properties: Option<Properties>,
 }
 
-impl VariableHeader {
+impl Header {
 	pub fn reason_code(&self) -> ReasonCode {
 		self.reason_code
 	}
@@ -34,7 +34,7 @@ impl VariableHeader {
 	}
 }
 
-impl Encode for VariableHeader {
+impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		w.write_all(&[self.reason_code as u8])?;
 		self.properties.encode(w)?;
@@ -43,7 +43,7 @@ impl Encode for VariableHeader {
 	}
 }
 
-impl Decode<VariableHeader> for VariableHeader {
+impl Decode<Header> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let reason_code = ReasonCode::from_repr(data[0])
 			.ok_or(ControlPacketParseError::UnknownReasonCode(data[0]))?;

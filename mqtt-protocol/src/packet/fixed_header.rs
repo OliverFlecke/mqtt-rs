@@ -5,6 +5,7 @@ use crate::packet::{ControlPacketParseError, Decode, Encode, kind::PacketType};
 #[derive(Debug, Clone)]
 pub struct MqttFixedHeader {
 	kind: PacketType,
+	// FIXME: this is a variable byte integer, needs to be changed
 	remaining_length: u8,
 }
 

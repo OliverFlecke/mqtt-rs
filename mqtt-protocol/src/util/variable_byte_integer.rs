@@ -12,10 +12,6 @@ impl TryFrom<u32> for VariableByteInteger {
 	type Error = ControlPacketParseError;
 
 	fn try_from(value: u32) -> Result<Self, Self::Error> {
-		// if value == 0 {
-		// 	return Err(ControlPacketParseError::InvalidVariableByteInteger(value));
-		// }
-
 		Ok(Self(value))
 	}
 }
