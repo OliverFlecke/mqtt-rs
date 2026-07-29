@@ -3,7 +3,7 @@ use std::io::Cursor;
 use std::io::Write;
 
 use crate::packet::{
-	self, ControlPacketParseError, DecodeMqtt, Encode, MqttControlPacket, MqttFixedHeader,
+	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, MqttFixedHeader,
 	ProtocolVersion, QoS, kind::PacketType, property::Properties,
 };
 
@@ -62,19 +62,24 @@ impl Encode for VariableHeader {
 	}
 }
 
-impl DecodeMqtt<VariableHeader> for VariableHeader {
-	fn try_decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
+impl Decode<VariableHeader> for VariableHeader {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		if [0x00, 0x04, b'M', b'Q', b'T', b'T'] != data[0..6] {
 			return Err(ControlPacketParseError::IncorrectProtocol);
 		}
 
-		Ok(Self {
-			version: ProtocolVersion::from_repr(data[7])
-				.ok_or(ControlPacketParseError::UnsupportedProtocol(data[7]))?,
-			connect_flags: ConnectFlags::try_from(data[8])?,
-			keep_alive: u16::from_be_bytes([data[9], data[10]]),
-			properties: Option::<Properties>::try_decode(&data[11..])?,
-		})
+		let (properties, data) = Option::<Properties>::decode(&data[11..])?;
+
+		Ok((
+			Self {
+				version: ProtocolVersion::from_repr(data[7])
+					.ok_or(ControlPacketParseError::UnsupportedProtocol(data[7]))?,
+				connect_flags: ConnectFlags::try_from(data[8])?,
+				keep_alive: u16::from_be_bytes([data[9], data[10]]),
+				properties,
+			},
+			data,
+		))
 	}
 }
 

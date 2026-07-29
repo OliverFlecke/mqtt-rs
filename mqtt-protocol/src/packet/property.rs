@@ -1,6 +1,6 @@
 use std::io::{self, Cursor, Write};
 
-use crate::packet::{ControlPacketParseError, DecodeMqtt, Encode};
+use crate::packet::{ControlPacketParseError, Decode, Encode};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -55,8 +55,8 @@ impl Encode for Option<Properties> {
 	}
 }
 
-impl DecodeMqtt<Option<Properties>> for Option<Properties> {
-	fn try_decode(_: &[u8]) -> Result<Self, ControlPacketParseError> {
-		Ok(None)
+impl Decode<Option<Properties>> for Option<Properties> {
+	fn decode(data: &[u8]) -> Result<(Option<Properties>, &[u8]), ControlPacketParseError> {
+		Ok((None, data))
 	}
 }

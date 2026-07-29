@@ -1,7 +1,7 @@
 use std::io::{self, Cursor, Write};
 
 use crate::packet::{
-	ControlPacketParseError, DecodeMqtt, Encode, property::Properties, reason::ReasonCode,
+	ControlPacketParseError, Decode, Encode, property::Properties, reason::ReasonCode,
 };
 
 #[derive(Debug, Clone)]
@@ -17,13 +17,20 @@ impl Encode for VariableHeader {
 	}
 }
 
-impl DecodeMqtt<VariableHeader> for VariableHeader {
-	fn try_decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
-		Ok(Self {
-			session_present: data[0] == 1,
-			reason_code: ReasonCode::from_repr(data[1])
-				.ok_or(ControlPacketParseError::UnknownReasonCode(data[1]))?,
-			properties: Option::<Properties>::try_decode(&data[2..])?,
-		})
+impl Decode<VariableHeader> for VariableHeader {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		let session_present = data[0] == 1;
+		let reason_code = ReasonCode::from_repr(data[1])
+			.ok_or(ControlPacketParseError::UnknownReasonCode(data[1]))?;
+		let (properties, data) = Option::<Properties>::decode(&data[2..])?;
+
+		Ok((
+			Self {
+				session_present,
+				reason_code,
+				properties,
+			},
+			data,
+		))
 	}
 }

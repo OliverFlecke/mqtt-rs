@@ -31,12 +31,16 @@ impl MqttControlPacket {
 	pub fn decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
 		tracing::debug!("Parsing packet from bytes {:x?}", data);
 
-		let header = MqttFixedHeader::try_decode(data)?;
+		let (header, data) = MqttFixedHeader::decode(data)?;
+		let (variable_header, _data) = match VariableHeader::decode(header.kind, data)? {
+			Some((variable_header, rest)) => (Some(variable_header), rest),
+			None => (None, data),
+		};
 
 		Ok(Self {
-			variable_header: VariableHeader::decode(header.kind, &data[2..])?,
-			payload: None, // TODO: Parse payload
 			header,
+			variable_header,
+			payload: None, // TODO: Parse payload
 		})
 	}
 }
@@ -69,9 +73,9 @@ pub trait Encode {
 	}
 }
 
-pub(crate) trait DecodeMqtt<T> {
+pub(crate) trait Decode<T> {
 	// TODO: we properly need the length of the decoded data here for further decoding.
-	fn try_decode(data: &[u8]) -> Result<T, ControlPacketParseError>;
+	fn decode(data: &[u8]) -> Result<(T, &[u8]), ControlPacketParseError>;
 }
 
 /// Represents the various variable headers that can be used in a packet.
@@ -104,14 +108,17 @@ impl Encode for Option<VariableHeader> {
 }
 
 impl VariableHeader {
-	fn decode(kind: PacketType, data: &[u8]) -> Result<Option<Self>, ControlPacketParseError> {
+	fn decode(
+		kind: PacketType,
+		data: &[u8],
+	) -> Result<Option<(Self, &[u8])>, ControlPacketParseError> {
 		match kind {
-			PacketType::Connect => Ok(Some(Self::Connect(connect::VariableHeader::try_decode(
-				data,
-			)?))),
-			PacketType::ConnAck => Ok(Some(Self::ConnAck(connack::VariableHeader::try_decode(
-				data,
-			)?))),
+			PacketType::Connect => {
+				connect::VariableHeader::decode(data).map(|(h, d)| Some((Self::Connect(h), d)))
+			}
+			PacketType::ConnAck => {
+				connack::VariableHeader::decode(data).map(|(h, d)| Some((Self::ConnAck(h), d)))
+			}
 
 			PacketType::PingReq | PacketType::PingResp => Ok(None),
 
@@ -184,19 +191,23 @@ impl Encode for MqttFixedHeader {
 	}
 }
 
-impl DecodeMqtt<MqttFixedHeader> for MqttFixedHeader {
-	fn try_decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
+impl Decode<MqttFixedHeader> for MqttFixedHeader {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		if data.len() < 2 {
 			return Err(ControlPacketParseError::NotEnoughData);
 		}
 
 		let kind = data[0] >> 4;
+		let kind =
+			PacketType::from_repr(kind).ok_or(ControlPacketParseError::UnknownPacketType(kind))?;
 
-		Ok(Self {
-			kind: PacketType::from_repr(kind)
-				.ok_or(ControlPacketParseError::UnknownPacketType(kind))?,
-			remaining_length: data[1],
-		})
+		Ok((
+			Self {
+				kind,
+				remaining_length: data[1],
+			},
+			&data[2..],
+		))
 	}
 }
 
