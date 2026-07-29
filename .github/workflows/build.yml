@@ -1,0 +1,58 @@
+---
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  VERSION: 1.97.1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.VERSION }}
+      - name: Build
+        run: cargo build --all-targets --all-features
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Test
+        run: cargo nextest run --all-targets --all-features
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.VERSION }}
+          components: rustfmt
+      - name: Format
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.VERSION }}
+          components: clippy
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings

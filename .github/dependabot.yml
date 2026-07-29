@@ -1,0 +1,30 @@
+---
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: /
+    schedule:
+      interval: weekly
+      day: wednesday
+
+  - package-ecosystem: "cargo"
+    schedule:
+      interval: weekly
+      day: wednesday
+    cooldown:
+      default-days: 2
+      semver-major-days: 7
+    directories:
+      - .
+    groups:
+      production-major:
+        dependency-type: production
+        update-types:
+          - major
+      production-minor:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development:
+        dependency-type: development
