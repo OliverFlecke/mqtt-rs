@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rstest.workspace = true
 strum = { workspace = true, features = ["derive"], default-features = false }
 thiserror = { workspace = true, default-features = false }
 tracing = { workspace = true, default-features = false }
 
 [dev-dependencies]
-hex = "0.4.3"
+hex = { workspace = true }
+pretty_assertions = { workspace = true }
 rstest = { workspace = true }

@@ -55,6 +55,27 @@ impl Encode for &[u8] {
 	}
 }
 
+impl Decode<u16> for u16 {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		if data.len() < 2 {
+			return Err(ControlPacketParseError::NotEnoughData);
+		}
+
+		let value = u16::from_be_bytes(data[0..2].try_into().expect("length asserted above"));
+		Ok((value, &data[2..]))
+	}
+}
+impl Decode<u32> for u32 {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		if data.len() < 4 {
+			return Err(ControlPacketParseError::NotEnoughData);
+		}
+
+		let value = u32::from_be_bytes(data[0..4].try_into().expect("length asserted above"));
+		Ok((value, &data[2..]))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

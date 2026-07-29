@@ -12,3 +12,5 @@ tokio-util = { version = "0.7.19" }
 tracing = { version = "0.1.44", default-features = false }
 tracing-subscriber = { version = "0.3.23" }
 rstest = { version = "0.26.1" }
+hex = { version = "0.4.3" }
+pretty_assertions = { version = "1.4.1" }
