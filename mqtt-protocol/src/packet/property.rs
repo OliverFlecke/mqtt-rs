@@ -1,8 +1,12 @@
 use std::io::{self, Cursor, Write};
 
-use crate::packet::{ControlPacketParseError, Decode, Encode};
+use crate::{
+	packet::{ControlPacketParseError, Decode, Encode},
+	util::VariableByteInteger,
+};
 
 #[derive(Debug, Clone)]
+#[repr(u8)]
 #[allow(dead_code)]
 pub enum PropertyId {
 	PayloadFormatIndicator = 0x01,     // Byte -> PUBLISH, Will Properties
@@ -37,11 +41,25 @@ pub enum PropertyId {
 // TODO: write encoder and decoder for properties
 
 #[derive(Debug, Clone, Default)]
-pub struct Properties {}
+pub struct Properties {
+	pub subscription_identifier: Option<VariableByteInteger>,
+}
 
 impl Encode for Properties {
-	fn encode(&self, _w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+	fn encode(&self, final_writer: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		// TODO: implement. Needs to write overall length and each property
+		let mut w = Cursor::new(Vec::new());
+
+		if let Some(subscription_identifier) = &self.subscription_identifier {
+			w.write_all(&[PropertyId::SubscriptionIdentifier as u8])?;
+			subscription_identifier.encode(&mut w)?;
+		}
+
+		let data = w.into_inner();
+		let length = VariableByteInteger::try_from(data.len() as u32).unwrap(); // TODO: handle error
+		length.encode(final_writer)?;
+		final_writer.write_all(&data)?;
+
 		Ok(())
 	}
 }

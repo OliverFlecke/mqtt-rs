@@ -10,7 +10,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use mqtt_protocol::packet::{Encode, MqttControlPacket, create_ping_req};
+use mqtt_protocol::packet::{Encode, MqttControlPacket};
 
 pub struct MqttClient {
 	cancellation_token: CancellationToken,
@@ -47,7 +47,7 @@ impl MqttClient {
 		let (tx_write, mut rx_write) = mpsc::channel::<MqttControlPacket>(4);
 		tokio::spawn(async move {
 			while let Some(packet) = rx_write.recv().await {
-				tracing::debug!("Sending packet type: {:x?}", packet.header.kind);
+				tracing::debug!("Sending packet type: {:x?}", packet.kind());
 				tracing::trace!("Sending packet: {:#?}", packet);
 
 				let encoded = match packet.encode_to_vec() {
@@ -60,7 +60,7 @@ impl MqttClient {
 
 				match self.writer.write_all(&encoded).await {
 					Ok(_) => {
-						tracing::debug!("Packet sent");
+						tracing::trace!("Packet sent");
 					}
 					Err(err) => {
 						tracing::error!("Error writing to socket: {:?}", err);
@@ -85,7 +85,7 @@ async fn health_check(writer: mpsc::Sender<MqttControlPacket>) -> Result<(), any
 	loop {
 		sleep(Duration::from_secs(5)).await;
 
-		let packet = create_ping_req();
+		let packet = MqttControlPacket::create_ping_req();
 		writer.send(packet).await?;
 	}
 }

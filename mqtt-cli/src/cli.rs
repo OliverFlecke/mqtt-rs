@@ -35,4 +35,8 @@ pub enum Command {
 		#[arg()]
 		message: String,
 	},
+	Subscribe {
+		#[arg()]
+		topic: String,
+	},
 }

@@ -3,19 +3,18 @@ use std::io::Cursor;
 use std::io::Write;
 
 use crate::packet::{
-	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, MqttFixedHeader,
-	ProtocolVersion, QoS, kind::PacketType, property::Properties,
+	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, ProtocolVersion, QoS,
+	kind::PacketType, property::Properties,
 };
 
-/// Create a new connect packet
-pub fn connect(client_id: Option<String>) -> MqttControlPacket {
-	MqttControlPacket {
-		header: MqttFixedHeader {
-			kind: PacketType::Connect,
-			remaining_length: 0,
-		},
-		variable_header: Some(packet::VariableHeader::Connect(VariableHeader::default())),
-		payload: Some(packet::Payload::Connect(Payload { client_id })),
+impl MqttControlPacket {
+	/// Create a new connect packet
+	pub fn connect(client_id: Option<String>) -> Self {
+		Self {
+			header: PacketType::Connect.into(),
+			variable_header: Some(packet::VariableHeader::Connect(VariableHeader::default())),
+			payload: Some(packet::Payload::Connect(Payload { client_id })),
+		}
 	}
 }
 

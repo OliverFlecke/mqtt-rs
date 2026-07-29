@@ -1,13 +1,11 @@
 use std::io::{self, Cursor};
 
-use crate::packet::{
-	self, Encode, MqttControlPacket, MqttFixedHeader, QoS, kind::PacketType, property::Properties,
-};
+use crate::packet::{self, Encode, MqttControlPacket, QoS, kind::PacketType, property::Properties};
 
 impl MqttControlPacket {
 	pub fn create_publish(topic: String, payload: Vec<u8>) -> Self {
 		Self {
-			header: MqttFixedHeader::new(PacketType::Publish),
+			header: PacketType::Publish.into(),
 			variable_header: Some(packet::VariableHeader::Publish(VariableHeader {
 				topic,
 				packet_identifier: None,

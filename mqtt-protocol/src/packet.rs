@@ -1,38 +1,44 @@
 mod connack;
 mod connect;
 mod disconnect;
+pub(crate) mod fixed_header;
 pub mod kind;
 mod ping;
 mod property;
 mod publish;
 mod reason;
-pub(crate) mod util;
+mod subscribe;
 
 use std::io::{self, Cursor, Write};
 
-use crate::packet::kind::PacketType;
-
-pub use connect::connect;
-pub use disconnect::create_disconnect;
-pub use ping::{create_ping_req, create_ping_resp};
+use crate::packet::{fixed_header::MqttFixedHeader, kind::PacketType};
 
 /// Represents a single MQTT control packet, containing a fixed header,
 /// and optionally a variable header and payload.
 #[derive(Debug)]
 pub struct MqttControlPacket {
 	// Packet type and flags together make up the first byte.
-	pub header: MqttFixedHeader,
-	pub variable_header: Option<VariableHeader>,
-	pub payload: Option<Payload>,
+	header: MqttFixedHeader,
+	variable_header: Option<VariableHeader>,
+	payload: Option<Payload>,
 }
 
 impl MqttControlPacket {
+	#[inline]
+	pub fn kind(&self) -> PacketType {
+		self.header.kind()
+	}
+
+	pub fn header(&self) -> &Option<VariableHeader> {
+		&self.variable_header
+	}
+
 	/// Parse a packet from the given data.
 	pub fn decode(data: &[u8]) -> Result<Self, ControlPacketParseError> {
-		tracing::debug!("Parsing packet from bytes {:x?}", data);
+		tracing::trace!("Parsing packet from bytes {:x?}", data);
 
 		let (header, data) = MqttFixedHeader::decode(data)?;
-		let (variable_header, _data) = match VariableHeader::decode(header.kind, data)? {
+		let (variable_header, _data) = match VariableHeader::decode(header.kind(), data)? {
 			Some((variable_header, rest)) => (Some(variable_header), rest),
 			None => (None, data),
 		};
@@ -74,7 +80,6 @@ pub trait Encode {
 }
 
 pub(crate) trait Decode<T> {
-	// TODO: we properly need the length of the decoded data here for further decoding.
 	fn decode(data: &[u8]) -> Result<(T, &[u8]), ControlPacketParseError>;
 }
 
@@ -85,6 +90,7 @@ pub enum VariableHeader {
 	ConnAck(connack::VariableHeader),
 	Disconnect(disconnect::VariableHeader),
 	Publish(publish::VariableHeader),
+	Subscribe(subscribe::VariableHeader),
 }
 
 impl Encode for VariableHeader {
@@ -94,6 +100,7 @@ impl Encode for VariableHeader {
 			VariableHeader::ConnAck(connack) => connack.encode(data),
 			VariableHeader::Disconnect(disconnect) => disconnect.encode(data),
 			VariableHeader::Publish(publish) => publish.encode(data),
+			VariableHeader::Subscribe(subscribe) => subscribe.encode(data),
 		}
 	}
 }
@@ -119,10 +126,15 @@ impl VariableHeader {
 			PacketType::ConnAck => {
 				connack::VariableHeader::decode(data).map(|(h, d)| Some((Self::ConnAck(h), d)))
 			}
+			PacketType::Disconnect => disconnect::VariableHeader::decode(data)
+				.map(|(h, d)| Some((Self::Disconnect(h), d))),
 
 			PacketType::PingReq | PacketType::PingResp => Ok(None),
 
-			_ => unimplemented!("Decoding of {:?} is not yet supported", kind),
+			_ => {
+				tracing::warn!("Decoding of {:?} is not yet supported", kind);
+				Ok(None)
+			}
 		}
 	}
 }
@@ -135,6 +147,7 @@ impl VariableHeader {
 pub enum Payload {
 	Connect(connect::Payload),
 	Publish(publish::Payload),
+	Subscribe(subscribe::Payload),
 }
 
 impl Encode for Payload {
@@ -142,6 +155,7 @@ impl Encode for Payload {
 		match self {
 			Payload::Connect(connect) => connect.encode(data),
 			Payload::Publish(publish) => publish.encode(data),
+			Payload::Subscribe(subscribe) => subscribe.encode(data),
 		}
 	}
 }
@@ -170,47 +184,6 @@ pub enum QoS {
 	ExactlyOnce = 2,
 }
 
-#[derive(Debug, Clone)]
-pub struct MqttFixedHeader {
-	pub kind: PacketType,
-	pub remaining_length: u8,
-}
-
-impl MqttFixedHeader {
-	pub fn new(kind: PacketType) -> Self {
-		Self {
-			kind,
-			remaining_length: 0,
-		}
-	}
-}
-
-impl Encode for MqttFixedHeader {
-	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
-		w.write_all(&[(self.kind as u8) << 4, self.remaining_length])
-	}
-}
-
-impl Decode<MqttFixedHeader> for MqttFixedHeader {
-	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
-		if data.len() < 2 {
-			return Err(ControlPacketParseError::NotEnoughData);
-		}
-
-		let kind = data[0] >> 4;
-		let kind =
-			PacketType::from_repr(kind).ok_or(ControlPacketParseError::UnknownPacketType(kind))?;
-
-		Ok((
-			Self {
-				kind,
-				remaining_length: data[1],
-			},
-			&data[2..],
-		))
-	}
-}
-
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ControlPacketParseError {
 	#[error("Unknown packet type {0:x}")]
@@ -225,4 +198,6 @@ pub enum ControlPacketParseError {
 	IncorrectProtocol,
 	#[error("Unsupported protocol version {0:x}")]
 	UnsupportedProtocol(u8),
+	#[error("Invalid variable byte integer {0:x}")]
+	InvalidVariableByteInteger(u32),
 }

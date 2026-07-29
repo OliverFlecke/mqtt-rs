@@ -1,21 +1,20 @@
 use std::io::{self, Cursor, Write};
 
 use crate::packet::{
-	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, MqttFixedHeader,
-	kind::PacketType, property::Properties, reason::ReasonCode,
+	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, kind::PacketType,
+	property::Properties, reason::ReasonCode,
 };
 
-pub fn create_disconnect() -> MqttControlPacket {
-	MqttControlPacket {
-		header: MqttFixedHeader {
-			kind: PacketType::Disconnect,
-			remaining_length: 0,
-		},
-		variable_header: Some(packet::VariableHeader::Disconnect(VariableHeader {
-			reason_code: ReasonCode::Success,
-			properties: None,
-		})),
-		payload: None,
+impl MqttControlPacket {
+	pub fn create_disconnect() -> Self {
+		Self {
+			header: PacketType::Disconnect.into(),
+			variable_header: Some(packet::VariableHeader::Disconnect(VariableHeader {
+				reason_code: ReasonCode::Success,
+				properties: None,
+			})),
+			payload: None,
+		}
 	}
 }
 
@@ -23,6 +22,16 @@ pub fn create_disconnect() -> MqttControlPacket {
 pub struct VariableHeader {
 	reason_code: ReasonCode,
 	properties: Option<Properties>,
+}
+
+impl VariableHeader {
+	pub fn reason_code(&self) -> ReasonCode {
+		self.reason_code
+	}
+
+	pub fn properties(&self) -> &Option<Properties> {
+		&self.properties
+	}
 }
 
 impl Encode for VariableHeader {

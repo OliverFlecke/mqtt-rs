@@ -1,6 +1,10 @@
+pub mod variable_byte_integer;
+
 use std::io::{self, Cursor, Write};
 
 use crate::packet::Encode;
+
+pub use variable_byte_integer::VariableByteInteger;
 
 impl Encode for &str {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
