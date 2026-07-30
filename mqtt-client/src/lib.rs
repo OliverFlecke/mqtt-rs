@@ -5,20 +5,20 @@ use tokio::{
 	io::{self, AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
 	net::{TcpStream, ToSocketAddrs},
 	pin,
-	sync::mpsc,
+	sync::{broadcast, mpsc},
 	time::sleep,
 };
 use tokio_util::sync::CancellationToken;
 
 use mqtt_protocol::packet::{Encode, MqttControlPacket};
 
-pub struct MqttClient {
+pub struct MqttClientBuilder {
 	cancellation_token: CancellationToken,
 	reader: ReadHalf<TcpStream>,
 	writer: WriteHalf<TcpStream>,
 }
 
-impl MqttClient {
+impl MqttClientBuilder {
 	pub async fn connect<A>(address: A) -> anyhow::Result<Self>
 	where
 		A: ToSocketAddrs,
@@ -35,17 +35,19 @@ impl MqttClient {
 		})
 	}
 
-	pub fn listen_and_wait(mut self) -> anyhow::Result<Client> {
-		let (tx_read, rx_read) = mpsc::channel::<MqttControlPacket>(4);
+	pub fn listen_and_wait(mut self) -> anyhow::Result<MqttClient> {
+		let (tx_read, _) = broadcast::channel::<MqttControlPacket>(4);
 		let read_token = self.cancellation_token.clone();
-		tokio::spawn(async move {
-			if let Err(err) = read(self.reader, tx_read, read_token).await {
+
+		let tx_read_task = tx_read.clone();
+		let _read_task = tokio::spawn(async move {
+			if let Err(err) = read(self.reader, tx_read_task, read_token).await {
 				tracing::error!("Error reading from socket: {:?}", err);
 			}
 		});
 
 		let (tx_write, mut rx_write) = mpsc::channel::<MqttControlPacket>(4);
-		tokio::spawn(async move {
+		let _write_task = tokio::spawn(async move {
 			while let Some(packet) = rx_write.recv().await {
 				tracing::debug!("Sending packet type: {:x?}", packet.kind());
 				tracing::trace!("Sending packet: {:#?}", packet);
@@ -72,14 +74,32 @@ impl MqttClient {
 		// let tx_health = tx_write.clone();
 		// tokio::spawn(async { health_check(tx_health).await });
 
-		Ok((tx_write, rx_read))
+		Ok(MqttClient {
+			tx: tx_write,
+			rx: tx_read,
+		})
 	}
 }
 
-type Client = (
-	mpsc::Sender<MqttControlPacket>,
-	mpsc::Receiver<MqttControlPacket>,
-);
+#[derive(Debug)]
+pub struct MqttClient {
+	tx: mpsc::Sender<MqttControlPacket>,
+	rx: broadcast::Sender<MqttControlPacket>,
+}
+
+impl MqttClient {
+	pub async fn send(&self, packet: MqttControlPacket) -> Result<(), ClientError> {
+		self.tx.send(packet).await.unwrap();
+		Ok(())
+	}
+
+	pub fn subscribe(&self) -> broadcast::Receiver<MqttControlPacket> {
+		self.rx.subscribe()
+	}
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ClientError {}
 
 #[allow(dead_code)]
 async fn health_check(writer: mpsc::Sender<MqttControlPacket>) -> Result<(), anyhow::Error> {
@@ -93,7 +113,7 @@ async fn health_check(writer: mpsc::Sender<MqttControlPacket>) -> Result<(), any
 
 async fn read(
 	reader: impl AsyncRead,
-	tx: mpsc::Sender<MqttControlPacket>,
+	tx: broadcast::Sender<MqttControlPacket>,
 	cancellation_token: CancellationToken,
 ) -> anyhow::Result<()> {
 	pin!(reader);
@@ -112,9 +132,10 @@ async fn read(
 
 				let packet = MqttControlPacket::decode(&buf[0..length]);
 				match packet {
-					Ok(packet) => {
-						tx.send(packet).await?;
-					}
+					Ok(packet) => match tx.send(packet) {
+						Ok(_) => {}
+						Err(err) => tracing::error!("Error sending packet: {:?}", err),
+					},
 					Err(err) => tracing::error!("Error parsing packet: {:?}", err),
 				};
 			}

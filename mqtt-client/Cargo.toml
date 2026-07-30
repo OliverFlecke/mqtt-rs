@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-mqtt-protocol = { path = "../mqtt-protocol" }
 anyhow = { workspace = true }
+mqtt-protocol = { path = "../mqtt-protocol" }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
