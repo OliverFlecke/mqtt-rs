@@ -8,47 +8,97 @@ use tokio::{
 	sync::{broadcast, mpsc},
 	time::sleep,
 };
-use tokio_util::sync::CancellationToken;
+use tokio_util::{future::FutureExt, sync::CancellationToken};
 
-use mqtt_protocol::packet::{Encode, MqttControlPacket};
+use mqtt_protocol::packet::{Encode, MqttControlPacket, ReasonCode, VariableHeader};
 
-pub struct MqttClientBuilder {
-	cancellation_token: CancellationToken,
-	reader: ReadHalf<TcpStream>,
-	writer: WriteHalf<TcpStream>,
+/// A client that can send and receive MQTT packets.
+#[derive(Debug)]
+pub struct MqttClient {
+	tx: mpsc::Sender<MqttControlPacket>,
+	rx: broadcast::Sender<MqttControlPacket>,
+	ct: CancellationToken,
+	// write_task: tokio::task::JoinHandle<()>,
+	// read_task: tokio::task::JoinHandle<()>,
 }
 
-impl MqttClientBuilder {
-	pub async fn connect<A>(address: A) -> anyhow::Result<Self>
+impl MqttClient {
+	/// Connect to a MQTT broker.
+	///
+	/// This will open a TCP connection to the broker and send a connect packet,
+	/// and wait for the connack before returning to ensure the connection is
+	/// established.
+	pub async fn connect<A>(address: A) -> Result<Self, ClientError>
 	where
 		A: ToSocketAddrs,
 	{
 		let socket = TcpStream::connect(address)
 			.await
-			.context("failed to connect")?;
+			.context("failed to connect")
+			.map_err(|_| ClientError::ConnectFailed)?;
 		let (reader, writer) = io::split(socket);
+		let ct = CancellationToken::new();
 
-		Ok(Self {
-			cancellation_token: CancellationToken::new(),
-			reader,
-			writer,
+		let (reader_tx, reader_rx) = Self::spawn_reader(reader, ct.clone());
+		let writer_tx = Self::spawn_writer(writer, ct.clone());
+		Self::send_connect_and_wait(reader_rx, &writer_tx).await?;
+
+		// let tx_health = tx_write.clone();
+		// tokio::spawn(async { health_check(tx_health).await });
+
+		Ok(MqttClient {
+			tx: writer_tx,
+			rx: reader_tx,
+			ct,
+			// write_task,
+			// read_task,
 		})
 	}
 
-	pub fn listen_and_wait(mut self) -> anyhow::Result<MqttClient> {
-		let (tx_read, _) = broadcast::channel::<MqttControlPacket>(4);
-		let read_token = self.cancellation_token.clone();
+	/// Disconnect from the broker.
+	pub async fn disconnect(self) -> Result<(), ClientError> {
+		tracing::debug!("Disconnecting");
+		self.send(MqttControlPacket::disconnect()).await?;
+		self.ct.cancel();
 
+		Ok(())
+	}
+
+	/// Send a packet to the broker.
+	pub async fn send(&self, packet: MqttControlPacket) -> Result<(), ClientError> {
+		self.tx.send(packet).await.map_err(ClientError::SendFailed)
+	}
+
+	/// Subscribe to receive packets from the broker.
+	pub fn subscribe(&self) -> broadcast::Receiver<MqttControlPacket> {
+		self.rx.subscribe()
+	}
+
+	fn spawn_reader(
+		reader: ReadHalf<TcpStream>,
+		ct: CancellationToken,
+	) -> (
+		broadcast::Sender<MqttControlPacket>,
+		broadcast::Receiver<MqttControlPacket>,
+	) {
+		let (tx_read, rx_read) = broadcast::channel::<MqttControlPacket>(4);
 		let tx_read_task = tx_read.clone();
-		let _read_task = tokio::spawn(async move {
-			if let Err(err) = read(self.reader, tx_read_task, read_token).await {
+		tokio::spawn(async move {
+			if let Err(err) = read(reader, tx_read_task, ct).await {
 				tracing::error!("Error reading from socket: {:?}", err);
 			}
 		});
+		(tx_read, rx_read)
+	}
 
+	/// Spawn a task that will write packets to the TPC socket.
+	fn spawn_writer(
+		mut writer: WriteHalf<TcpStream>,
+		ct: CancellationToken,
+	) -> mpsc::Sender<MqttControlPacket> {
 		let (tx_write, mut rx_write) = mpsc::channel::<MqttControlPacket>(4);
-		let _write_task = tokio::spawn(async move {
-			while let Some(packet) = rx_write.recv().await {
+		tokio::spawn(async move {
+			while let Some(packet) = rx_write.recv().with_cancellation_token(&ct).await.flatten() {
 				tracing::debug!("Sending packet type: {:x?}", packet.kind());
 				tracing::trace!("Sending packet: {:#?}", packet);
 
@@ -60,7 +110,7 @@ impl MqttClientBuilder {
 					}
 				};
 
-				match self.writer.write_all(&encoded).await {
+				match writer.write_all(&encoded).await {
 					Ok(_) => {
 						tracing::trace!("Packet sent");
 					}
@@ -69,37 +119,46 @@ impl MqttClientBuilder {
 					}
 				};
 			}
+			tracing::debug!("Writer closed");
 		});
 
-		// let tx_health = tx_write.clone();
-		// tokio::spawn(async { health_check(tx_health).await });
+		tx_write
+	}
 
-		Ok(MqttClient {
-			tx: tx_write,
-			rx: tx_read,
-		})
+	/// Send a connect packet and wait for the connack.
+	async fn send_connect_and_wait(
+		mut rx_read: broadcast::Receiver<MqttControlPacket>,
+		tx_write: &mpsc::Sender<MqttControlPacket>,
+	) -> Result<(), ClientError> {
+		tx_write
+			.send(MqttControlPacket::connect(None))
+			.await
+			.map_err(ClientError::SendFailed)?;
+		match rx_read
+			.recv()
+			.await
+			.map_err(|_| ClientError::ReceiveFailed)?
+			.header()
+		{
+			Some(VariableHeader::ConnAck(header)) if header.reason_code == ReasonCode::Success => {
+				tracing::debug!("Connected");
+				Ok(())
+			}
+			_ => Err(ClientError::ConnectFailed),
+		}
 	}
 }
 
-#[derive(Debug)]
-pub struct MqttClient {
-	tx: mpsc::Sender<MqttControlPacket>,
-	rx: broadcast::Sender<MqttControlPacket>,
-}
-
-impl MqttClient {
-	pub async fn send(&self, packet: MqttControlPacket) -> Result<(), ClientError> {
-		self.tx.send(packet).await.unwrap();
-		Ok(())
-	}
-
-	pub fn subscribe(&self) -> broadcast::Receiver<MqttControlPacket> {
-		self.rx.subscribe()
-	}
-}
-
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, thiserror::Error)]
-pub enum ClientError {}
+pub enum ClientError {
+	#[error("Failed to connect")]
+	ConnectFailed,
+	#[error("Failed to send packet: {0}")]
+	SendFailed(#[source] mpsc::error::SendError<MqttControlPacket>),
+	#[error("Failed to receive packet")]
+	ReceiveFailed,
+}
 
 #[allow(dead_code)]
 async fn health_check(writer: mpsc::Sender<MqttControlPacket>) -> Result<(), anyhow::Error> {
@@ -114,17 +173,21 @@ async fn health_check(writer: mpsc::Sender<MqttControlPacket>) -> Result<(), any
 async fn read(
 	reader: impl AsyncRead,
 	tx: broadcast::Sender<MqttControlPacket>,
-	cancellation_token: CancellationToken,
+	ct: CancellationToken,
 ) -> anyhow::Result<()> {
 	pin!(reader);
 
 	let mut buf = [0; 1024];
 	loop {
-		let data = reader.read(&mut buf).await;
+		let data = reader.read(&mut buf).with_cancellation_token(&ct).await;
+		let Some(data) = data else {
+			return Ok(());
+		};
+
 		match data {
 			Ok(0) => {
 				tracing::warn!("Server disconnected");
-				cancellation_token.cancel();
+				ct.cancel();
 				break;
 			}
 			Ok(length) => {

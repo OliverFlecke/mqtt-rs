@@ -25,6 +25,7 @@ pub use kind::PacketType;
 pub use payload::Payload;
 pub use protocol_version::ProtocolVersion;
 pub use qos::QoS;
+pub use reason::ReasonCode;
 pub use variable_header::VariableHeader;
 
 /// Trait for types that can be encoded into a byte vector following the MQTT

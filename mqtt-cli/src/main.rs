@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use mqtt_cli::{Cli, Command};
-use mqtt_client::MqttClientBuilder;
+use mqtt_client::MqttClient;
 use mqtt_protocol::packet::{MqttControlPacket, Payload, VariableHeader};
 use tokio::{signal, time::sleep};
 use tracing::level_filters::LevelFilter;
@@ -19,8 +19,7 @@ async fn main() -> anyhow::Result<()> {
 
 	tracing::debug!("Starting mqtt-cli");
 
-	let client = MqttClientBuilder::connect(format!("{}:{}", args.host, args.port)).await?;
-	let client = client.listen_and_wait()?;
+	let client = MqttClient::connect(format!("{}:{}", args.host, args.port)).await?;
 
 	let mut rx = client.subscribe();
 	let reader = tokio::spawn(async move {
@@ -51,19 +50,16 @@ async fn main() -> anyhow::Result<()> {
 
 	match args.command {
 		Command::Connect => {
-			client
-				.send(MqttControlPacket::connect(args.client_id))
-				.await?;
+			// Should we do anything here? The client would already be connected above
+			// client
+			// 	.send(MqttControlPacket::connect(args.client_id))
+			// 	.await?;
 		}
 		Command::Publish {
 			topic,
 			message,
 			repeat_frequency_ms,
 		} => {
-			client
-				.send(MqttControlPacket::connect(args.client_id))
-				.await?;
-
 			let packet = MqttControlPacket::publish(topic, message.into_bytes());
 			tokio::spawn(async move {
 				loop {
@@ -82,14 +78,6 @@ async fn main() -> anyhow::Result<()> {
 		}
 		Command::Subscribe { topic } => {
 			tracing::debug!("Subscribing to topic: {:?}", topic);
-			client
-				.send(MqttControlPacket::connect(args.client_id))
-				.await?;
-
-			// TODO: we don't want to sleep here, but need to wait until the
-			// connection is established
-			sleep(Duration::from_millis(200)).await;
-
 			client
 				.send(MqttControlPacket::subscribe(vec![topic.as_str().into()]))
 				.await?;

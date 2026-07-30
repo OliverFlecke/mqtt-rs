@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, strum::FromRepr)]
+#[derive(Debug, Clone, Copy, strum::FromRepr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ReasonCode {
 	Success = 0x00, // CONNACK, PUBACK, PUBREC, PUBREL, PUBCOMP, UNSUBACK, AUTH
