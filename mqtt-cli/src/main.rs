@@ -5,6 +5,7 @@ use mqtt_cli::{Cli, Command};
 use mqtt_client::MqttClient;
 use mqtt_protocol::packet::{MqttControlPacket, Payload, VariableHeader};
 use tokio::{signal, time::sleep};
+use tokio_util::future::FutureExt;
 use tracing::level_filters::LevelFilter;
 
 #[tokio::main]
@@ -22,8 +23,9 @@ async fn main() -> anyhow::Result<()> {
 	let client = MqttClient::connect(format!("{}:{}", args.host, args.port)).await?;
 
 	let mut rx = client.subscribe();
+	let ct = client.cancellation_token().clone();
 	let reader = tokio::spawn(async move {
-		while let Ok(packet) = rx.recv().await {
+		while let Some(Ok(packet)) = rx.recv().with_cancellation_token(&ct).await {
 			tracing::debug!("Packet received: {:x?}", packet.kind());
 
 			match packet.into() {
@@ -87,7 +89,6 @@ async fn main() -> anyhow::Result<()> {
 	tokio::select! {
 		_ = reader => {}
 		_ = signal::ctrl_c() => {
-			// tx.send(MqttControlPacket::disconnect()).await?;
 			tracing::debug!("Shutting down");
 		},
 	}

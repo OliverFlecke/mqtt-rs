@@ -32,6 +32,8 @@ pub struct Cli {
 #[derive(Parser)]
 pub enum Command {
 	Connect,
+
+	#[command(alias("pub"))]
 	Publish {
 		#[arg()]
 		topic: String,
@@ -42,6 +44,8 @@ pub enum Command {
 		#[arg(short, long)]
 		repeat_frequency_ms: Option<u64>,
 	},
+
+	#[command(alias("sub"))]
 	Subscribe {
 		#[arg()]
 		topic: String,

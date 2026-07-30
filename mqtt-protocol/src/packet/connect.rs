@@ -7,12 +7,20 @@ use crate::packet::{
 	kind::PacketType, property::Properties,
 };
 
+const DEFAULT_KEEP_ALIVE: u16 = 60;
+
 impl MqttControlPacket {
 	/// Create a new connect packet
-	pub fn connect(client_id: Option<String>) -> Self {
+	pub fn connect(
+		client_id: Option<String>,
+		flags: Option<ConnectFlags>,
+		keep_alive: Option<u16>,
+	) -> Self {
 		Self::new(
 			PacketType::Connect,
-			Some(packet::VariableHeader::Connect(Header::default())),
+			Some(packet::VariableHeader::Connect(Header::new(
+				flags, keep_alive,
+			))),
 			Some(packet::Payload::Connect(Payload { client_id })),
 		)
 	}
@@ -23,7 +31,6 @@ pub struct Header {
 	version: ProtocolVersion,
 	connect_flags: ConnectFlags,
 	keep_alive: u16,
-	#[allow(dead_code)]
 	properties: Option<Properties>,
 }
 
@@ -32,18 +39,18 @@ impl Default for Header {
 		Self {
 			version: ProtocolVersion::V5,
 			connect_flags: ConnectFlags::default(),
-			keep_alive: 60,
+			keep_alive: DEFAULT_KEEP_ALIVE,
 			properties: None,
 		}
 	}
 }
 
 impl Header {
-	pub fn new(flags: Option<ConnectFlags>) -> Self {
+	pub fn new(flags: Option<ConnectFlags>, keep_alive: Option<u16>) -> Self {
 		Self {
 			version: ProtocolVersion::V5,
 			connect_flags: flags.unwrap_or_default(),
-			keep_alive: 60,
+			keep_alive: keep_alive.unwrap_or(DEFAULT_KEEP_ALIVE),
 			properties: None,
 		}
 	}
