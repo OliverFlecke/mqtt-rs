@@ -9,9 +9,65 @@ pub use variable_byte_integer::VariableByteInteger;
 impl Encode for &str {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		w.write_all(&(self.len() as u16).to_be_bytes())?;
-		w.write_all(self.as_bytes())?;
+		w.write_all(self.as_bytes())
+	}
+}
 
-		Ok(())
+impl Encode for &[u8] {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		w.write_all(&(self.len() as u16).to_be_bytes())?;
+		w.write_all(self)
+	}
+}
+
+impl Encode for String {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		self.as_str().encode(w)
+	}
+}
+
+impl Encode for Vec<u8> {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		self.as_slice().encode(w)
+	}
+}
+
+impl Encode for Option<&str> {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		match self {
+			Some(value) => value.encode(w),
+			None => w.write_all(&[0, 0]),
+		}
+	}
+}
+
+#[duplicate::duplicate_item(
+  int_type  size;
+  [ u8 ]    [ 1 ];
+  [ u16 ]   [ 2 ];
+  [ u32 ]   [ 4 ];
+)]
+impl Encode for int_type {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		w.write_all(&self.to_be_bytes())
+	}
+}
+
+#[duplicate::duplicate_item(
+  int_type  size;
+  [ u8 ]    [ 1 ];
+  [ u16 ]   [ 2 ];
+  [ u32 ]   [ 4 ];
+)]
+impl Decode<Self> for int_type {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		#[allow(clippy::len_zero)]
+		if data.len() < size {
+			return Err(ControlPacketParseError::NotEnoughData);
+		}
+
+		let value = Self::from_be_bytes(data[0..size].try_into().expect("sizeasserted above"));
+		Ok((value, &data[size..]))
 	}
 }
 
@@ -34,42 +90,6 @@ impl Decode<String> for String {
 			.to_string();
 
 		Ok((s, rest))
-	}
-}
-
-impl Encode for Option<&str> {
-	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
-		match self {
-			Some(value) => value.encode(w),
-			None => w.write_all(&[0, 0]),
-		}
-	}
-}
-
-impl Encode for &[u8] {
-	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
-		w.write_all(&(self.len() as u16).to_be_bytes())?;
-		w.write_all(self)?;
-
-		Ok(())
-	}
-}
-
-#[duplicate::duplicate_item(
-  int_type  size;
-  [ u8 ]    [ 1 ];
-  [ u16 ]   [ 2 ];
-  [ u32 ]   [ 4 ];
-)]
-impl Decode<Self> for int_type {
-	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
-		#[allow(clippy::len_zero)]
-		if data.len() < size {
-			return Err(ControlPacketParseError::NotEnoughData);
-		}
-
-		let value = Self::from_be_bytes(data[0..size].try_into().expect("sizeasserted above"));
-		Ok((value, &data[size..]))
 	}
 }
 

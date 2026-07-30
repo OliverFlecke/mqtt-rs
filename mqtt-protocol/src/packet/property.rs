@@ -43,8 +43,18 @@ pub enum Id {
 	SharedSubscriptionAvailable = 0x2A, // Byte -> CONNACK
 }
 
-// TODO: write encoder and decoder for properties
+impl Id {
+	fn encode<V: Encode>(self, w: &mut Cursor<Vec<u8>>, value: &Option<V>) -> io::Result<()> {
+		if let Some(value) = value {
+			w.write_all(&[self as u8])?;
+			value.encode(w)?;
+		}
 
+		Ok(())
+	}
+}
+
+/// Represents properties that are attached in some header types.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Properties {
 	pub length: u32,
@@ -77,7 +87,7 @@ pub struct Properties {
 	pub subscription_identifier_available: Option<u8>,
 	pub shared_subscription_available: Option<u8>,
 	pub retain_available: Option<u8>,
-	pub user_properties: Option<HashMap<String, String>>,
+	pub user_properties: Option<UserProperties>,
 }
 
 impl Properties {
@@ -91,13 +101,36 @@ impl Properties {
 
 impl Encode for Properties {
 	fn encode(&self, final_writer: &mut Cursor<Vec<u8>>) -> io::Result<()> {
-		// TODO: implement. Needs to write overall length and each property
 		let mut w = Cursor::new(Vec::new());
 
-		if let Some(subscription_identifier) = &self.subscription_identifier {
-			w.write_all(&[Id::SubscriptionIdentifier as u8])?;
-			subscription_identifier.encode(&mut w)?;
-		}
+		Id::PayloadFormatIndicator.encode(&mut w, &self.payload_format_indicator)?;
+		Id::MessageExpiryInterval.encode(&mut w, &self.message_expiry_interval)?;
+		Id::ContentType.encode(&mut w, &self.content_type)?;
+		Id::ResponseTopic.encode(&mut w, &self.response_topic)?;
+		Id::CorrelationData.encode(&mut w, &self.correlation_data)?;
+		Id::SubscriptionIdentifier.encode(&mut w, &self.subscription_identifier)?;
+		Id::SessionExpiryInterval.encode(&mut w, &self.session_expiry_interval)?;
+		Id::AssignedClientIdentifier.encode(&mut w, &self.assigned_client_identifier)?;
+		Id::ServerKeepAlive.encode(&mut w, &self.server_keep_alive)?;
+		Id::AuthenticationMethod.encode(&mut w, &self.authentication_method)?;
+		Id::AuthenticationData.encode(&mut w, &self.authentication_data)?;
+		Id::RequestProblemInformation.encode(&mut w, &self.request_problem_information)?;
+		Id::WillDelayInterval.encode(&mut w, &self.will_delay_interval)?;
+		Id::RequestResponseInformation.encode(&mut w, &self.request_response_information)?;
+		Id::ResponseInformation.encode(&mut w, &self.response_information)?;
+		Id::ServerReference.encode(&mut w, &self.server_reference)?;
+		Id::ReasonString.encode(&mut w, &self.reason_string)?;
+		Id::ReceiveMaximum.encode(&mut w, &self.receive_maximum)?;
+		Id::TopicAliasMaximum.encode(&mut w, &self.topic_alias_maximum)?;
+		Id::TopicAlias.encode(&mut w, &self.topic_alias)?;
+		Id::MaximumQoS.encode(&mut w, &self.maximum_qos.map(|x| x as u8))?;
+		Id::RetainAvailable.encode(&mut w, &self.retain_available)?;
+		Id::UserProperty.encode(&mut w, &self.user_properties)?;
+		Id::MaximumPacketSize.encode(&mut w, &self.maximum_packet_size)?;
+		Id::WildcardSubscriptionAvailable.encode(&mut w, &self.wildcard_subscription_available)?;
+		Id::SubscriptionIdentifierAvailable
+			.encode(&mut w, &self.subscription_identifier_available)?;
+		Id::SharedSubscriptionAvailable.encode(&mut w, &self.shared_subscription_available)?;
 
 		let data = w.into_inner();
 		let length = VariableByteInteger::try_from(data.len() as u32).unwrap(); // TODO: handle error
@@ -208,7 +241,7 @@ impl Decode<Option<Properties>> for Option<Properties> {
 				}
 				Id::UserProperty => {
 					if ps.user_properties.is_none() {
-						ps.user_properties = Some(HashMap::new());
+						ps.user_properties = Some(UserProperties::default());
 					}
 
 					if let Some(user_properties) = ps.user_properties.as_mut() {
@@ -251,7 +284,7 @@ trait DecodeProperty<T> {
 )]
 impl DecodeProperty<Self> for kind {
 	fn decode_property(data: &[u8], index: &mut usize) -> Result<Self, ControlPacketParseError> {
-		let (value, _) = Self::decode(&data[*index..*index + size])?;
+		let (value, _) = Self::decode(&data[*index..])?;
 		*index += size;
 		Ok(value)
 	}
@@ -278,11 +311,48 @@ impl DecodeProperty<Self> for VariableByteInteger {
 	}
 }
 
+/// User defined properties, representing a map of strings to strings, which
+/// can contain any user defined data.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UserProperties(HashMap<String, String>);
+
+impl UserProperties {
+	pub fn insert(&mut self, key: String, value: String) -> Option<String> {
+		self.0.insert(key, value)
+	}
+}
+
+impl Encode for UserProperties {
+	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
+		for (k, v) in self.0.iter() {
+			k.encode(w)?;
+			v.encode(w)?;
+		}
+
+		Ok(())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 
 	use pretty_assertions::assert_eq;
+
+	#[test]
+	fn encode_subscription_identifier() {
+		let properties = Properties {
+			subscription_identifier: Some(5.try_into().unwrap()),
+			..Default::default()
+		};
+
+		let result = properties.encode_to_vec().unwrap();
+
+		assert_eq!(
+			result.as_slice(),
+			&[0x02, Id::SubscriptionIdentifier as u8, 0x05]
+		);
+	}
 
 	#[test]
 	fn decode_subscription_identifier() {
@@ -326,6 +396,53 @@ mod tests {
 		let (property, remaining) = Option::<Properties>::decode(data).unwrap();
 
 		assert_eq!(property.unwrap().payload_format_indicator, Some(1));
+		assert_eq!(remaining, &[]);
+	}
+
+	#[test]
+	fn decode_message_expiry_interval() {
+		let data = &[
+			0x05,
+			Id::MessageExpiryInterval as u8,
+			0x12,
+			0x34,
+			0x56,
+			0x78,
+		];
+
+		let expected = Properties {
+			length: 5,
+			message_expiry_interval: Some(305419896),
+			..Default::default()
+		};
+
+		let (property, remaining) = Option::<Properties>::decode(data).unwrap();
+
+		assert_eq!(property.unwrap(), expected);
+		assert_eq!(remaining, &[]);
+	}
+
+	#[test]
+	fn decode_message_expiry_interval_to_short() {
+		let data = &[0x03, Id::MessageExpiryInterval as u8, 0x12];
+
+		let result = Option::<Properties>::decode(data);
+		assert_eq!(result, Err(ControlPacketParseError::NotEnoughData));
+	}
+
+	#[test]
+	fn decode_content_type() {
+		let data = &[0x06, Id::ContentType as u8, 0x00, 0x03, b't', b'e', b's'];
+
+		let expected = Properties {
+			length: 6,
+			content_type: Some("tes".to_string()),
+			..Default::default()
+		};
+
+		let (property, remaining) = Option::<Properties>::decode(data).unwrap();
+
+		assert_eq!(property.unwrap(), expected);
 		assert_eq!(remaining, &[]);
 	}
 }
