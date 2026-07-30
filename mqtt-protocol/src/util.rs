@@ -55,24 +55,21 @@ impl Encode for &[u8] {
 	}
 }
 
-impl Decode<u16> for u16 {
+#[duplicate::duplicate_item(
+  int_type  size;
+  [ u8 ]    [ 1 ];
+  [ u16 ]   [ 2 ];
+  [ u32 ]   [ 4 ];
+)]
+impl Decode<Self> for int_type {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
-		if data.len() < 2 {
+		#[allow(clippy::len_zero)]
+		if data.len() < size {
 			return Err(ControlPacketParseError::NotEnoughData);
 		}
 
-		let value = u16::from_be_bytes(data[0..2].try_into().expect("length asserted above"));
-		Ok((value, &data[2..]))
-	}
-}
-impl Decode<u32> for u32 {
-	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
-		if data.len() < 4 {
-			return Err(ControlPacketParseError::NotEnoughData);
-		}
-
-		let value = u32::from_be_bytes(data[0..4].try_into().expect("length asserted above"));
-		Ok((value, &data[2..]))
+		let value = Self::from_be_bytes(data[0..size].try_into().expect("sizeasserted above"));
+		Ok((value, &data[size..]))
 	}
 }
 

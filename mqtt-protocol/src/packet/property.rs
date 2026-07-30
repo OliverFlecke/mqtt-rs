@@ -1,14 +1,17 @@
-use std::io::{self, Cursor, Write};
+use std::{
+	collections::HashMap,
+	io::{self, Cursor, Write},
+};
 
 use crate::{
-	packet::{ControlPacketParseError, Decode, Encode},
+	packet::{ControlPacketParseError, Decode, Encode, QoS},
 	util::VariableByteInteger,
 };
 
 #[derive(Debug, Clone, strum::FromRepr)]
 #[repr(u8)]
 #[allow(dead_code)]
-pub enum PropertyId {
+pub enum Id {
 	PayloadFormatIndicator = 0x01,     // Byte -> PUBLISH, Will Properties
 	MessageExpiryInterval = 0x02,      // Four Byte Integer -> PUBLISH, Will Properties
 	ContentType = 0x03,                // UTF-8 Encoded String -> PUBLISH, Will Properties
@@ -23,14 +26,16 @@ pub enum PropertyId {
 	RequestProblemInformation = 0x17,  // Byte -> CONNECT
 	WillDelayInterval = 0x18,          // Four Byte Integer -> Will Properties
 	RequestResponseInformation = 0x19, // Byte -> CONNECT
-	ResponseInformation = 0x1A,        // UTF-8 Encoded String -> CONNACK
-	ServerReference = 0x1C,            // UTF-8 Encoded String -> CONNACK, DISCONNECT
+
+	ResponseInformation = 0x1A, // UTF-8 Encoded String -> CONNACK
+	ServerReference = 0x1C,     // UTF-8 Encoded String -> CONNACK, DISCONNECT
 	ReasonString = 0x1F, // UTF-8 Encoded String -> CONNACK, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBACK, UNSUBACK, DISCONNECT, AUTH
-	ReceiveMaximum = 0x21, // Two Byte Integer -> CONNECT, CONNACK
-	TopicAliasMaximum = 0x22, // Two Byte Integer -> CONNECT, CONNACK
-	TopicAlias = 0x23,   // Two Byte Integer -> PUBLISH
-	MaximumQoS = 0x24,   // Byte -> CONNACK
-	RetainAvailable = 0x25, // Byte -> CONNACK
+
+	ReceiveMaximum = 0x21,                  // Two Byte Integer -> CONNECT, CONNACK
+	TopicAliasMaximum = 0x22,               // Two Byte Integer -> CONNECT, CONNACK
+	TopicAlias = 0x23,                      // Two Byte Integer -> PUBLISH
+	MaximumQoS = 0x24,                      // Byte -> CONNACK
+	RetainAvailable = 0x25,                 // Byte -> CONNACK
 	UserProperty = 0x26, // UTF-8 String Pair -> CONNECT, CONNACK, PUBLISH, Will Properties, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, SUBACK, UNSUBSCRIBE, UNSUBACK, DISCONNECT, AUTH
 	MaximumPacketSize = 0x27, // Four Byte Integer -> CONNECT, CONNACK
 	WildcardSubscriptionAvailable = 0x28, // Byte -> CONNACK
@@ -43,11 +48,36 @@ pub enum PropertyId {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Properties {
 	pub length: u32,
+
 	pub subscription_identifier: Option<VariableByteInteger>,
 	pub topic_alias_maximum: Option<u16>,
 	pub assigned_client_identifier: Option<String>,
 	pub maximum_packet_size: Option<u32>,
 	pub receive_maximum: Option<u16>,
+	pub payload_format_indicator: Option<u8>,
+	pub message_expiry_interval: Option<u32>,
+	pub content_type: Option<String>,
+	pub response_topic: Option<String>,
+	pub correlation_data: Option<Vec<u8>>,
+	pub session_expiry_interval: Option<u32>,
+	pub server_keep_alive: Option<u16>,
+	pub authentication_method: Option<String>,
+	pub authentication_data: Option<Vec<u8>>,
+
+	pub request_problem_information: Option<u8>,
+	pub response_information: Option<String>,
+	pub server_reference: Option<String>,
+	pub reason_string: Option<String>,
+
+	pub will_delay_interval: Option<u32>,
+	pub request_response_information: Option<u8>,
+	pub topic_alias: Option<u16>,
+	pub maximum_qos: Option<QoS>,
+	pub wildcard_subscription_available: Option<u8>,
+	pub subscription_identifier_available: Option<u8>,
+	pub shared_subscription_available: Option<u8>,
+	pub retain_available: Option<u8>,
+	pub user_properties: Option<HashMap<String, String>>,
 }
 
 impl Properties {
@@ -65,7 +95,7 @@ impl Encode for Properties {
 		let mut w = Cursor::new(Vec::new());
 
 		if let Some(subscription_identifier) = &self.subscription_identifier {
-			w.write_all(&[PropertyId::SubscriptionIdentifier as u8])?;
+			w.write_all(&[Id::SubscriptionIdentifier as u8])?;
 			subscription_identifier.encode(&mut w)?;
 		}
 
@@ -96,49 +126,155 @@ impl Decode<Option<Properties>> for Option<Properties> {
 			return Ok((None, &data[len..]));
 		}
 
-		let mut properties = Properties::new(len as u32);
+		let mut ps = Properties::new(len as u32);
 		let mut i = 0;
 
 		while i < len {
-			match PropertyId::from_repr(data[i]) {
-				Some(PropertyId::SubscriptionIdentifier) => {
-					let (sub_id, _) = VariableByteInteger::decode(&data[i + 1..])?;
-					i += 1 + sub_id.num_of_bytes();
-					properties.subscription_identifier = Some(sub_id);
+			let id =
+				Id::from_repr(data[i]).ok_or(ControlPacketParseError::UnknownProperty(data[i]))?;
+			i += 1;
+
+			match id {
+				Id::PayloadFormatIndicator => {
+					ps.payload_format_indicator = Some(u8::decode_property(data, &mut i)?)
+				}
+				Id::MessageExpiryInterval => {
+					ps.message_expiry_interval = Some(u32::decode_property(data, &mut i)?);
+				}
+				Id::ContentType => {
+					ps.content_type = Some(String::decode_property(data, &mut i)?);
+				}
+				Id::ResponseTopic => {
+					ps.response_topic = Some(String::decode_property(data, &mut i)?);
+				}
+				Id::CorrelationData => {
+					ps.correlation_data = Some(Vec::<u8>::decode_property(data, &mut i)?);
+				}
+				Id::SubscriptionIdentifier => {
+					ps.subscription_identifier =
+						Some(VariableByteInteger::decode_property(data, &mut i)?);
+				}
+				Id::SessionExpiryInterval => {
+					ps.session_expiry_interval = Some(u32::decode_property(data, &mut i)?);
+				}
+				Id::AssignedClientIdentifier => {
+					ps.assigned_client_identifier = Some(String::decode_property(data, &mut i)?);
+				}
+				Id::ServerKeepAlive => {
+					ps.server_keep_alive = Some(u16::decode_property(data, &mut i)?);
+				}
+				Id::AuthenticationMethod => {
+					ps.authentication_method = Some(String::decode_property(data, &mut i)?);
+				}
+				Id::AuthenticationData => {
+					ps.authentication_data = Some(Vec::<u8>::decode_property(data, &mut i)?);
+				}
+				Id::RequestProblemInformation => {
+					ps.request_problem_information = Some(u8::decode_property(data, &mut i)?);
+				}
+				Id::WillDelayInterval => {
+					ps.will_delay_interval = Some(u32::decode_property(data, &mut i)?);
+				}
+				Id::RequestResponseInformation => {
+					ps.request_response_information = Some(u8::decode_property(data, &mut i)?);
+				}
+				Id::ResponseInformation => {
+					ps.response_information = Some(String::decode_property(data, &mut i)?);
+				}
+				Id::ServerReference => {
+					ps.server_reference = Some(String::decode_property(data, &mut i)?);
+				}
+				Id::ReasonString => {
+					ps.reason_string = Some(String::decode_property(data, &mut i)?);
 				}
 
-				Some(PropertyId::TopicAliasMaximum) => {
-					let (value, _) = u16::decode(&data[i + 1..])?;
-					i += 3;
-					properties.topic_alias_maximum = Some(value);
+				Id::ReceiveMaximum => {
+					ps.receive_maximum = Some(u16::decode_property(data, &mut i)?);
 				}
-				Some(PropertyId::AssignedClientIdentifier) => {
-					let (value, _) = String::decode(&data[i + 1..])?;
-					i += 3 + value.len(); // Property id + 2 byte length + string length
-					properties.assigned_client_identifier = Some(value);
+				Id::TopicAliasMaximum => {
+					ps.topic_alias_maximum = Some(u16::decode_property(data, &mut i)?);
 				}
-				Some(PropertyId::MaximumPacketSize) => {
-					let (value, _) = u32::decode(&data[i + 1..])?;
-					i += 5;
-					properties.maximum_packet_size = Some(value);
+				Id::TopicAlias => {
+					ps.topic_alias = Some(u16::decode_property(data, &mut i)?);
 				}
-				Some(PropertyId::ReceiveMaximum) => {
-					let (value, _) = u16::decode(&data[i + 1..])?;
-					properties.receive_maximum = Some(value);
-					i += 3;
+				Id::MaximumQoS => {
+					let qos = u8::decode_property(data, &mut i)?;
+					ps.maximum_qos = Some(
+						QoS::from_repr(qos).ok_or(ControlPacketParseError::UnsupportedQoS(qos))?,
+					);
 				}
+				Id::RetainAvailable => {
+					ps.retain_available = Some(u8::decode_property(data, &mut i)?);
+				}
+				Id::UserProperty => {
+					if ps.user_properties.is_none() {
+						ps.user_properties = Some(HashMap::new());
+					}
 
-				// TODO: implement remaining properties
-				Some(id) => {
-					tracing::warn!("Decoding of property id not yet implemented: {:x?}", id);
-					i += 1; // Just to read through the properties that are not yet implemented.
-					// Not perfect, as it might hit already supported values.
+					if let Some(user_properties) = ps.user_properties.as_mut() {
+						let key = String::decode_property(data, &mut i)?;
+						let value = String::decode_property(data, &mut i)?;
+						user_properties.insert(key, value);
+					}
 				}
-				None => return Err(ControlPacketParseError::UnknownProperty(data[i])),
+				Id::MaximumPacketSize => {
+					ps.maximum_packet_size = Some(u32::decode_property(data, &mut i)?);
+				}
+				Id::WildcardSubscriptionAvailable => {
+					ps.wildcard_subscription_available = Some(u8::decode_property(data, &mut i)?);
+				}
+				Id::SubscriptionIdentifierAvailable => {
+					ps.subscription_identifier_available = Some(u8::decode_property(data, &mut i)?);
+				}
+				Id::SharedSubscriptionAvailable => {
+					ps.shared_subscription_available = Some(u8::decode_property(data, &mut i)?);
+				}
 			}
 		}
 
-		Ok((Some(properties), &data[len..]))
+		Ok((Some(ps), &data[len..]))
+	}
+}
+
+/// Helper trait to decode properties into their respective types and size.
+/// This will read the given type from the start of `data` and advance the index
+/// by the consumed amount.
+trait DecodeProperty<T> {
+	fn decode_property(data: &[u8], index: &mut usize) -> Result<T, ControlPacketParseError>;
+}
+
+#[duplicate::duplicate_item(
+  kind      size;
+  [ u8 ]    [ 1 ];
+  [ u16 ]   [ 2 ];
+  [ u32 ]   [ 4 ];
+)]
+impl DecodeProperty<Self> for kind {
+	fn decode_property(data: &[u8], index: &mut usize) -> Result<Self, ControlPacketParseError> {
+		let (value, _) = Self::decode(&data[*index..*index + size])?;
+		*index += size;
+		Ok(value)
+	}
+}
+
+#[duplicate::duplicate_item(
+  kind          size;
+  [ String ]    [ 2 ];
+  [ Vec<u8> ]   [ 2 ];
+)]
+impl DecodeProperty<Self> for kind {
+	fn decode_property(data: &[u8], index: &mut usize) -> Result<Self, ControlPacketParseError> {
+		let (value, _) = Self::decode(&data[*index..])?;
+		*index += size + value.len(); // length indicator + data length
+		Ok(value)
+	}
+}
+
+impl DecodeProperty<Self> for VariableByteInteger {
+	fn decode_property(data: &[u8], index: &mut usize) -> Result<Self, ControlPacketParseError> {
+		let (value, _) = Self::decode(&data[*index..])?;
+		*index += value.number_of_bytes();
+		Ok(value)
 	}
 }
 
@@ -182,5 +318,14 @@ mod tests {
 			..Default::default()
 		};
 		assert_eq!(property.unwrap(), expected);
+	}
+
+	#[test]
+	fn decode_payload_format_indicator() {
+		let data = &[0x02, Id::PayloadFormatIndicator as u8, 0x01];
+		let (property, remaining) = Option::<Properties>::decode(data).unwrap();
+
+		assert_eq!(property.unwrap().payload_format_indicator, Some(1));
+		assert_eq!(remaining, &[]);
 	}
 }

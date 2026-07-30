@@ -9,7 +9,7 @@ use crate::packet::{ControlPacketParseError, Decode, Encode};
 pub struct VariableByteInteger(u32);
 
 impl VariableByteInteger {
-	pub fn num_of_bytes(&self) -> usize {
+	pub fn number_of_bytes(&self) -> usize {
 		match self.0 {
 			0..=127 => 1,
 			128..=16_383 => 2,
