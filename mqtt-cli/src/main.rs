@@ -1,10 +1,8 @@
-use std::time::Duration;
-
 use clap::Parser;
 use mqtt_cli::{Cli, Command};
 use mqtt_client::MqttClient;
 use mqtt_protocol::packet::{MqttControlPacket, Payload, VariableHeader};
-use tokio::{signal, time::sleep};
+use tokio::signal;
 use tokio_util::future::FutureExt;
 use tracing::level_filters::LevelFilter;
 
@@ -57,40 +55,21 @@ async fn main() -> anyhow::Result<()> {
 			// 	.send(MqttControlPacket::connect(args.client_id))
 			// 	.await?;
 		}
-		Command::Publish {
-			topic,
-			message,
-			repeat_frequency_ms,
-		} => {
-			let packet = MqttControlPacket::publish(topic, message.into_bytes());
-			tokio::spawn(async move {
-				loop {
-					if let Err(err) = client.send(packet.clone()).await {
-						tracing::error!("Error sending packet: {:?}", err);
-						break;
-					}
-
-					if let Some(repeat_frequency_ms) = repeat_frequency_ms {
-						sleep(Duration::from_millis(repeat_frequency_ms)).await;
-					} else {
-						break;
-					}
-				}
-			});
-		}
-		Command::Subscribe { topic } => {
-			tracing::debug!("Subscribing to topic: {:?}", topic);
+		Command::Publish(publish) => mqtt_cli::publish_handler(client, publish).await?,
+		Command::Subscribe(sub) => {
+			tracing::debug!("Subscribing to topic: {:?}", sub.topic);
 			client
-				.send(MqttControlPacket::subscribe(vec![topic.as_str().into()]))
+				.send(MqttControlPacket::subscribe(vec![
+					sub.topic.as_str().into(),
+				]))
 				.await?;
+			tokio::select! {
+				_ = reader => {}
+				_ = signal::ctrl_c() => {
+					tracing::debug!("Shutting down");
+				},
+			}
 		}
-	}
-
-	tokio::select! {
-		_ = reader => {}
-		_ = signal::ctrl_c() => {
-			tracing::debug!("Shutting down");
-		},
 	}
 
 	// TODO: need a way to flush the messages out through the client so the

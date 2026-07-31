@@ -1,4 +1,5 @@
 use clap::Parser;
+use mqtt_protocol::packet;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -29,25 +30,63 @@ pub struct Cli {
 	pub command: Command,
 }
 
-#[derive(Parser)]
+/// Quality of service to publish the message with.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum QoS {
+	#[default]
+	AtMostOnce = 0,
+	AtLeastOnce = 1,
+	ExactlyOnce = 2,
+}
+
+impl From<QoS> for packet::QoS {
+	fn from(val: QoS) -> Self {
+		match val {
+			QoS::AtMostOnce => packet::QoS::AtMostOnce,
+			QoS::AtLeastOnce => packet::QoS::AtLeastOnce,
+			QoS::ExactlyOnce => packet::QoS::ExactlyOnce,
+		}
+	}
+}
+
+#[derive(clap::Subcommand)]
 pub enum Command {
+	/// Connect to a broker, to validate the connection.
 	Connect,
 
+	/// Publish a message to a topic.
 	#[command(alias("pub"))]
-	Publish {
-		#[arg()]
-		topic: String,
-		#[arg()]
-		message: String,
+	Publish(Publish),
 
-		/// Indicate how frequent the message should be sent
-		#[arg(short, long)]
-		repeat_frequency_ms: Option<u64>,
-	},
-
+	/// Subscribe to a topic.
 	#[command(alias("sub"))]
-	Subscribe {
-		#[arg()]
-		topic: String,
-	},
+	Subscribe(Subscribe),
+}
+
+/// Arguments for the `publish` command.
+#[derive(Debug, clap::Args)]
+pub struct Publish {
+	/// Topic to publish the message to.
+	#[arg()]
+	pub topic: String,
+
+	/// Message to publish.
+	#[arg()]
+	pub message: String,
+
+	/// Quality of service to publish the message with.
+	#[arg(short, long, default_value = "at-most-once")]
+	pub qos: QoS,
+
+	/// Indicate how frequent the message should be sent
+	#[arg(short, long)]
+	pub repeat_frequency_ms: Option<u64>,
+}
+
+/// Arguments for the `subscribe` command.
+#[derive(Debug, clap::Args)]
+pub struct Subscribe {
+	/// Topic to subscribe to.
+	#[arg()]
+	pub topic: String,
 }
