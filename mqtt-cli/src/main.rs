@@ -1,6 +1,6 @@
 use clap::Parser;
 use mqtt_cli::{Cli, Command};
-use mqtt_client::MqttClient;
+use mqtt_client::{ConnectOptionsBuilder, MqttClient};
 use mqtt_protocol::packet::{MqttControlPacket, Payload, VariableHeader};
 use tokio::signal;
 use tokio_util::future::FutureExt;
@@ -18,7 +18,10 @@ async fn main() -> anyhow::Result<()> {
 
 	tracing::debug!("Starting mqtt-cli");
 
-	let client = MqttClient::connect(format!("{}:{}", args.host, args.port)).await?;
+	let options = ConnectOptionsBuilder::default()
+		.client_id(args.client_id)
+		.build()?;
+	let client = MqttClient::connect(format!("{}:{}", args.host, args.port), options).await?;
 
 	let mut rx = client.subscribe();
 	let ct = client.cancellation_token().clone();
