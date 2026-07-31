@@ -5,12 +5,15 @@ use derive_builder::Builder;
 use tokio::{
 	io::{self, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
 	net::{TcpStream, ToSocketAddrs},
-	sync::{broadcast, mpsc},
+	sync::{broadcast, mpsc, oneshot},
 	time::sleep,
 };
 use tokio_util::{future::FutureExt, sync::CancellationToken};
 
-use mqtt_protocol::packet::{Encode, MqttControlPacket, ReasonCode, VariableHeader};
+use mqtt_protocol::packet::{
+	Encode, MqttControlPacket, PublishOptions, QoS, ReasonCode, VariableHeader,
+};
+use tracing::instrument;
 
 use crate::session::Session;
 
@@ -25,7 +28,6 @@ pub struct MqttClient {
 	tx: mpsc::Sender<MqttControlPacket>,
 	rx: broadcast::Sender<MqttControlPacket>,
 	ct: CancellationToken,
-	#[allow(dead_code)]
 	session: Session,
 }
 
@@ -54,6 +56,26 @@ impl MqttClient {
 
 		let tx_health = writer_tx.clone();
 		tokio::spawn(async { health_check(tx_health, Duration::from_secs(5)).await });
+
+		// TODO: must have at least one subscriber to the reader, so this is kept
+		// around for now. Secondly, this is needed to track the internal state
+		// of the client, and reconnect the client if it disconnects.
+		let sub = reader_tx.subscribe();
+		tokio::spawn(async {
+			let mut sub = sub;
+			while let Ok(packet) = sub.recv().await {
+				tracing::trace!(?packet, "Received packet");
+
+				match packet.into() {
+					(Some(VariableHeader::Disconnect(header)), _) => {
+						tracing::info!(reason = ?header.reason_code(), "Disconnected");
+					}
+					(Some(VariableHeader::Subscribe(_)), _) => {}
+
+					_ => {}
+				}
+			}
+		});
 
 		Ok(MqttClient {
 			tx: writer_tx,
@@ -98,6 +120,97 @@ impl MqttClient {
 		self.rx.subscribe()
 	}
 
+	/// Publish a message to a topic
+	#[instrument(skip(self), level = "debug", err)]
+	pub async fn publish(
+		&mut self,
+		topic: String,
+		payload: Vec<u8>,
+		retain: bool,
+		qos: QoS,
+	) -> Result<(), ClientError> {
+		match qos {
+			QoS::AtMostOnce => self.publish_at_most_once(topic, payload, retain).await,
+			QoS::AtLeastOnce => self.publish_at_least_once(topic, payload, retain).await,
+			QoS::ExactlyOnce => todo!(),
+		}
+	}
+
+	/// Publish a message to a topic with at most once delivery.
+	#[instrument(skip(self), level = "debug")]
+	pub async fn publish_at_least_once(
+		&mut self,
+		topic: String,
+		payload: Vec<u8>,
+		retain: bool,
+	) -> Result<(), ClientError> {
+		let options = PublishOptions {
+			qos: QoS::AtLeastOnce,
+			retain,
+			..Default::default()
+		};
+
+		tracing::debug!("Publishing packet");
+		let packet = MqttControlPacket::publish(topic, payload, options, None);
+		self.send(packet).await?;
+
+		Ok(())
+	}
+
+	/// Publish a message with at most once delivery.
+	#[instrument(skip(self), level = "debug")]
+	pub async fn publish_at_most_once(
+		&mut self,
+		topic: String,
+		payload: Vec<u8>,
+		retain: bool,
+	) -> Result<(), ClientError> {
+		let options = PublishOptions {
+			qos: QoS::AtMostOnce,
+			retain,
+			..Default::default()
+		};
+
+		let packet_id = self.session.get_next_packet_id();
+		let rx = self.listen_for_puback(packet_id);
+
+		tracing::debug!(?packet_id, "Publishing packet");
+		let packet = MqttControlPacket::publish(topic, payload, options, Some(packet_id));
+		self.send(packet).await?;
+
+		if let Err(err) = rx.await {
+			tracing::error!(?err, "Error waiting for ack");
+		}
+
+		Ok(())
+	}
+
+	fn listen_for_puback(&self, packet_id: u16) -> oneshot::Receiver<()> {
+		let mut sub = self.subscribe();
+		let ct = self.cancellation_token().clone();
+		let (tx, rx) = oneshot::channel::<()>();
+
+		tokio::spawn(async move {
+			while let Some(Ok(packet)) = sub.recv().with_cancellation_token(&ct).await {
+				if let (Some(VariableHeader::PubAck(header)), _) = packet.into()
+					&& header.packet_identifier == packet_id
+				{
+					tracing::debug!(?packet_id, "Received puback for packet");
+					if let Err(err) = tx.send(()) {
+						tracing::error!(?err, "Error sending ack");
+					}
+
+					break;
+				}
+			}
+		});
+
+		rx
+	}
+
+	/// Spawn a task to read the data from the TCP socket. This will decode the
+	/// data into MQTT control packets and send them to the internal queue for
+	/// subscribers to handle.
 	fn spawn_reader(
 		mut reader: ReadHalf<TcpStream>,
 		ct: CancellationToken,
@@ -141,7 +254,11 @@ impl MqttClient {
 					Ok(packet) => packet,
 				};
 				if let Err(err) = tx.send(packet) {
-					tracing::error!("Error sending packet: {:?}", err)
+					tracing::error!(
+						receiver_count = tx.receiver_count(),
+						?err,
+						"Error sending packet to client queue"
+					);
 				};
 			}
 
@@ -169,12 +286,17 @@ impl MqttClient {
 					}
 				};
 
+				tracing::debug!(
+					data = format!("{:2x?}", encoded),
+					"Sending data over socket"
+				);
 				match writer.write_all(&encoded).await {
-					Ok(_) => tracing::trace!("Packet sent"),
+					Ok(()) => tracing::trace!("Packet sent"),
 					Err(err) => tracing::error!("Error writing to socket: {:?}", err),
 				};
 			}
-			tracing::trace!("Writer closed");
+
+			tracing::debug!("Writer closed");
 		});
 
 		tx
@@ -197,8 +319,6 @@ impl MqttClient {
 			.header()
 		{
 			Some(VariableHeader::ConnAck(header)) if header.reason_code == ReasonCode::Success => {
-				tracing::debug!("Connected");
-
 				let client_id = header
 					.properties
 					.to_owned()

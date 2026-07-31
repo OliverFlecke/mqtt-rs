@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, Copy, strum::FromRepr)]
 #[repr(u8)]
 pub enum PacketType {
-	Reserved = 0,
+	// Reserved = 0,
 	Connect = 1,
 	ConnAck = 2,
 	Publish = 3,

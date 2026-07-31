@@ -33,12 +33,17 @@ impl From<PublishOptions> for u8 {
 
 impl MqttControlPacket {
 	/// Create a packet to publish a message to a topic.
-	pub fn publish(topic: String, payload: Vec<u8>, options: PublishOptions) -> Self {
+	pub fn publish(
+		topic: String,
+		payload: Vec<u8>,
+		options: PublishOptions,
+		packet_identifier: Option<u16>,
+	) -> Self {
 		Self::new_from_parts(
 			MqttFixedHeader::new(PacketType::Publish, options.into()),
 			Some(packet::VariableHeader::Publish(Header {
 				topic,
-				// packet_identifier: None,
+				packet_identifier,
 				properties: None,
 			})),
 			Some(packet::Payload::Publish(Payload(payload))),
@@ -57,7 +62,7 @@ pub struct Flags {
 #[derive(Debug, Clone)]
 pub struct Header {
 	topic: String,
-	// packet_identifier: Option<u16>,
+	packet_identifier: Option<u16>,
 	properties: Option<Properties>,
 }
 
@@ -70,7 +75,9 @@ impl Header {
 impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		self.topic.as_str().encode(w)?;
-		// self.packet_identifier.encode(w)?;
+		if let Some(packet_identifier) = self.packet_identifier {
+			packet_identifier.encode(w)?;
+		}
 		self.properties.encode(w)?;
 
 		Ok(())
@@ -80,13 +87,16 @@ impl Encode for Header {
 impl Decode<Header> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let (topic, data) = String::decode(data)?;
+
+		// TODO: how do we know if there is a packet identifier or not? It should
+		// only be present if the QoS is > 0.
 		// let (packet_identifier, data) = Option::<String>::decode(data)?;
 		let (properties, data) = Option::<Properties>::decode(data)?;
 
 		Ok((
 			Self {
 				topic,
-				// packet_identifier: None,
+				packet_identifier: None,
 				properties,
 			},
 			data,
@@ -121,6 +131,22 @@ impl TryInto<String> for Payload {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn encode_header() {
+		let header = Header {
+			topic: "test".to_string(),
+			packet_identifier: Some(10),
+			properties: None,
+		};
+
+		let data = header.encode_to_vec().unwrap();
+
+		assert_eq!(
+			data,
+			vec![0x00, 0x04, b't', b'e', b's', b't', 0x00, 0x0a, 0x0]
+		);
+	}
 
 	#[test]
 	fn decode_payload() {

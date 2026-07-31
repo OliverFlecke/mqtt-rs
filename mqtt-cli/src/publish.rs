@@ -5,14 +5,14 @@ use tokio::time::sleep;
 
 use crate::Publish;
 
-pub async fn handler(client: MqttClient, args: Publish) -> anyhow::Result<()> {
+pub async fn handler(mut client: MqttClient, args: Publish) -> anyhow::Result<()> {
 	loop {
 		if let Err(err) = client
 			.publish(
 				args.topic.clone(),
 				args.message.clone().into_bytes(),
-				args.qos.into(),
 				args.retain,
+				args.qos.into(),
 			)
 			.await
 		{

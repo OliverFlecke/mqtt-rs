@@ -22,7 +22,7 @@ The project is laid out with three crates:
 	- [x] Connect
 	- [x] Subscribe
 	- [x] Publish
-	- [ ] Publish QoS 1
+	- [x] Publish QoS 1
 	- [ ] Subscribe QoS 1
 	- [ ] Publish QoS 2
 	- [ ] Subscribe QoS 2

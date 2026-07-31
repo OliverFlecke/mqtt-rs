@@ -4,7 +4,10 @@ use tokio_util::{future::FutureExt, sync::CancellationToken};
 use crate::MqttClient;
 
 impl MqttClient {
-	pub fn on_message(&self, f: fn(MqttControlPacket)) -> CancellationToken {
+	pub fn on_message<F>(&self, f: F) -> CancellationToken
+	where
+		F: Fn(MqttControlPacket) + Send + 'static,
+	{
 		let mut rx = self.subscribe();
 		let ct_client = self.cancellation_token().clone();
 

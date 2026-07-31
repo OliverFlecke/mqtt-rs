@@ -20,4 +20,10 @@ impl Session {
 			last_packet_id: 0,
 		}
 	}
+
+	/// Get the next packet id to use.
+	pub fn get_next_packet_id(&mut self) -> u16 {
+		self.last_packet_id += 1;
+		self.last_packet_id
+	}
 }

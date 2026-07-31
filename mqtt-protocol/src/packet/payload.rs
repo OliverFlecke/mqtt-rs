@@ -39,7 +39,7 @@ impl DecodeFromType<Payload> for Payload {
 		kind: packet::PacketType,
 		data: &[u8],
 	) -> Result<(Option<Self>, &[u8]), packet::ControlPacketParseError> {
-		tracing::trace!("Decoding payload: {:?} => {:x?}", kind, data);
+		tracing::trace!(?kind, data = format!("{:2x?}", data), "Decoding payload");
 
 		match kind {
 			PacketType::Publish => {
@@ -49,7 +49,11 @@ impl DecodeFromType<Payload> for Payload {
 				packet::suback::Payload::decode(data).map(|(p, d)| (Some(Self::SubAck(p)), d))
 			}
 
-			PacketType::ConnAck | PacketType::PingReq | PacketType::PingResp => Ok((None, data)),
+			PacketType::ConnAck
+			| PacketType::Disconnect
+			| PacketType::PubAck
+			| PacketType::PingReq
+			| PacketType::PingResp => Ok((None, data)),
 
 			_ => {
 				tracing::warn!(?kind, "Decoding not yet supported");

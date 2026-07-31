@@ -1,7 +1,8 @@
 use std::io::{self, Cursor};
 
 use crate::packet::{
-	self, ControlPacketParseError, Decode, DecodeFromType, Encode, kind::PacketType,
+	self, ControlPacketParseError, Decode, DecodeFromType, Encode, connack, connect, disconnect,
+	kind::PacketType, puback, publish, suback,
 };
 
 /// Represents the various variable headers that can be used in a packet.
@@ -11,6 +12,7 @@ pub enum VariableHeader {
 	ConnAck(packet::connack::Header),
 	Disconnect(packet::disconnect::Header),
 	Publish(packet::publish::Header),
+	PubAck(packet::puback::Header),
 	Subscribe(packet::subscribe::Header),
 	SubAck(packet::suback::Header),
 }
@@ -22,6 +24,7 @@ impl Encode for VariableHeader {
 			VariableHeader::ConnAck(connack) => connack.encode(data),
 			VariableHeader::Disconnect(disconnect) => disconnect.encode(data),
 			VariableHeader::Publish(publish) => publish.encode(data),
+			VariableHeader::PubAck(puback) => puback.encode(data),
 			VariableHeader::Subscribe(subscribe) => subscribe.encode(data),
 			VariableHeader::SubAck(suback) => suback.encode(data),
 		}
@@ -50,25 +53,29 @@ impl DecodeFromType<VariableHeader> for VariableHeader {
 
 		match kind {
 			PacketType::Connect => {
-				packet::connect::Header::decode(data).map(|(h, d)| (Some(Self::Connect(h)), d))
+				connect::Header::decode(data).map(|(h, d)| (Some(Self::Connect(h)), d))
 			}
 			PacketType::ConnAck => {
-				packet::connack::Header::decode(data).map(|(h, d)| (Some(Self::ConnAck(h)), d))
+				connack::Header::decode(data).map(|(h, d)| (Some(Self::ConnAck(h)), d))
 			}
-			PacketType::Disconnect => packet::disconnect::Header::decode(data)
-				.map(|(h, d)| (Some(Self::Disconnect(h)), d)),
+			PacketType::Disconnect => {
+				disconnect::Header::decode(data).map(|(h, d)| (Some(Self::Disconnect(h)), d))
+			}
 			PacketType::SubAck => {
-				packet::suback::Header::decode(data).map(|(h, d)| (Some(Self::SubAck(h)), d))
+				suback::Header::decode(data).map(|(h, d)| (Some(Self::SubAck(h)), d))
 			}
 
 			PacketType::Publish => {
-				packet::publish::Header::decode(data).map(|(h, d)| (Some(Self::Publish(h)), d))
+				publish::Header::decode(data).map(|(h, d)| (Some(Self::Publish(h)), d))
+			}
+			PacketType::PubAck => {
+				puback::Header::decode(data).map(|(h, d)| (Some(Self::PubAck(h)), d))
 			}
 
 			PacketType::PingReq | PacketType::PingResp => Ok((None, data)),
 
 			_ => {
-				tracing::warn!("Decoding of {:?} is not yet supported", kind);
+				tracing::warn!(?kind, "Variable header decoding not supported");
 				Ok((None, data))
 			}
 		}

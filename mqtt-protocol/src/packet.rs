@@ -8,6 +8,7 @@ mod payload;
 mod ping;
 mod property;
 mod protocol_version;
+mod puback;
 mod publish;
 mod qos;
 mod reason;
