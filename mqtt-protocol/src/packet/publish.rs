@@ -1,14 +1,41 @@
 use std::io::{self, Cursor};
 
 use crate::packet::{
-	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, QoS, kind::PacketType,
-	property::Properties,
+	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, QoS,
+	fixed_header::MqttFixedHeader, kind::PacketType, property::Properties,
 };
 
+/// Represents options for a publish packet.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PublishOptions {
+	/// Indicates whether this is a duplicate message. It should be 'false' by default,
+	/// indicating to the server that this is the first time the message has been
+	/// attempted to be sent to the server.
+	/// `true` indicates that this message is likely a retry.
+	pub duplicate: bool,
+
+	/// Quality of service to publish the message with.
+	pub qos: QoS,
+
+	/// Whether the message should be retained by the server.
+	pub retain: bool,
+}
+
+impl From<PublishOptions> for u8 {
+	fn from(val: PublishOptions) -> Self {
+		let mut value = 0;
+		value |= (val.duplicate as u8) << 3;
+		value |= (val.qos as u8) << 1;
+		value |= val.retain as u8;
+		value
+	}
+}
+
 impl MqttControlPacket {
-	pub fn publish(topic: String, payload: Vec<u8>) -> Self {
-		Self::new(
-			PacketType::Publish,
+	/// Create a packet to publish a message to a topic.
+	pub fn publish(topic: String, payload: Vec<u8>, options: PublishOptions) -> Self {
+		Self::new_from_parts(
+			MqttFixedHeader::new(PacketType::Publish, options.into()),
 			Some(packet::VariableHeader::Publish(Header {
 				topic,
 				// packet_identifier: None,
@@ -102,5 +129,24 @@ mod tests {
 
 		assert_eq!(payload.0, b"hello world".to_vec());
 		assert_eq!(remaining, &[]);
+	}
+
+	#[test]
+	fn publish_options_to_u8_default() {
+		let options = PublishOptions::default();
+		let value: u8 = options.into();
+		assert_eq!(value, 0b0000);
+	}
+
+	#[test]
+	fn publish_options_to_u8() {
+		let options = PublishOptions {
+			duplicate: true,
+			qos: QoS::ExactlyOnce,
+			retain: true,
+		};
+
+		let value: u8 = options.into();
+		assert_eq!(value, 0b1101);
 	}
 }

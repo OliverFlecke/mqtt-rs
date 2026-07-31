@@ -19,6 +19,7 @@ impl Encode for Header {
 
 impl Decode<Header> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		tracing::trace!(data = format!("{:2x?}", data), "Decoding connack header");
 		let session_present = data[0] == 1;
 		let reason_code = ReasonCode::from_repr(data[1])
 			.ok_or(ControlPacketParseError::UnknownReasonCode(data[1]))?;

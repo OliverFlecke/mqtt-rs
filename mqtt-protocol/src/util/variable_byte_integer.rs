@@ -5,7 +5,7 @@ use crate::packet::{ControlPacketParseError, Decode, Encode};
 /// Represents a variable byte integer.
 ///
 /// Maximum value is the maximum value of a `u32`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct VariableByteInteger(u32);
 
 impl VariableByteInteger {

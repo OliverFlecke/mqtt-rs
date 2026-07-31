@@ -30,7 +30,7 @@ pub struct MqttClient {
 }
 
 impl MqttClient {
-	/// Connect to a MQTT broker.
+	/// Connect to an MQTT broker.
 	///
 	/// This will open a TCP connection to the broker and send a connect packet,
 	/// and wait for the connack before returning to ensure the connection is
@@ -52,8 +52,8 @@ impl MqttClient {
 
 		tracing::debug!(?session, "Connected");
 
-		// let tx_health = tx_write.clone();
-		// tokio::spawn(async { health_check(tx_health).await });
+		let tx_health = writer_tx.clone();
+		tokio::spawn(async { health_check(tx_health, Duration::from_secs(5)).await });
 
 		Ok(MqttClient {
 			tx: writer_tx,
@@ -77,8 +77,20 @@ impl MqttClient {
 	}
 
 	/// Send a packet to the broker.
+	///
+	/// This is a low-level API to send packet level messages. See `publish` for
+	/// a higher-level API to publish messages.
 	pub async fn send(&self, packet: MqttControlPacket) -> Result<(), ClientError> {
 		self.tx.send(packet).await.map_err(ClientError::SendFailed)
+	}
+
+	/// Flush all packets to the broker.
+	pub async fn flush(&self) -> Result<(), ClientError> {
+		// TODO: need a way to flush the messages out through the client so the
+		// bytes has actually been sent over the network.
+		sleep(Duration::from_millis(300)).await;
+
+		Ok(())
 	}
 
 	/// Subscribe to receive packets from the broker.
@@ -138,7 +150,7 @@ impl MqttClient {
 		(tx, rx)
 	}
 
-	/// Spawn a task that will write packets to the TPC socket.
+	/// Spawn a task that will write packets to the TCP socket.
 	fn spawn_writer(
 		mut writer: WriteHalf<TcpStream>,
 		ct: CancellationToken,
@@ -146,7 +158,7 @@ impl MqttClient {
 		let (tx, mut rx) = mpsc::channel::<MqttControlPacket>(4);
 		tokio::spawn(async move {
 			while let Some(packet) = rx.recv().with_cancellation_token(&ct).await.flatten() {
-				tracing::debug!("Sending packet type: {:x?}", packet.kind());
+				tracing::debug!(kind = ?packet.kind(), "Sending packet");
 				tracing::trace!("Sending packet: {:#?}", packet);
 
 				let encoded = match packet.encode_to_vec() {
@@ -187,16 +199,14 @@ impl MqttClient {
 			Some(VariableHeader::ConnAck(header)) if header.reason_code == ReasonCode::Success => {
 				tracing::debug!("Connected");
 
-				let session = Session {
-					client_id: header
-						.properties
-						.to_owned()
-						.and_then(|p| p.assigned_client_identifier)
-						.or(client_id)
-						.ok_or(ClientError::MissingClientId)?,
-				};
+				let client_id = header
+					.properties
+					.to_owned()
+					.and_then(|p| p.assigned_client_identifier)
+					.or(client_id)
+					.ok_or(ClientError::MissingClientId)?;
 
-				Ok(session)
+				Ok(Session::new(client_id))
 			}
 			_ => Err(ClientError::ConnectFailed),
 		}
@@ -216,10 +226,14 @@ pub enum ClientError {
 	MissingClientId,
 }
 
-#[allow(dead_code)]
-async fn health_check(writer: mpsc::Sender<MqttControlPacket>) -> Result<(), anyhow::Error> {
+async fn health_check(
+	writer: mpsc::Sender<MqttControlPacket>,
+	interval: Duration,
+) -> Result<(), anyhow::Error> {
 	loop {
-		sleep(Duration::from_secs(5)).await;
+		// TODO: this timer should reset ever time a packet is sent from the client,
+		// to avoid sending a ping packet.
+		sleep(interval).await;
 
 		let packet = MqttControlPacket::create_ping_req();
 		writer.send(packet).await?;

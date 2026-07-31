@@ -42,7 +42,11 @@ impl DecodeFromType<VariableHeader> for VariableHeader {
 		kind: PacketType,
 		data: &[u8],
 	) -> Result<(Option<Self>, &[u8]), ControlPacketParseError> {
-		tracing::trace!("Decoding variable header: {:?} => {:x?}", kind, data);
+		tracing::trace!(
+			?kind,
+			data = format!("{:2x?}", data),
+			"Decoding variable header"
+		);
 
 		match kind {
 			PacketType::Connect => {

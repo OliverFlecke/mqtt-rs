@@ -3,8 +3,8 @@ use std::io::{self, Cursor, Write};
 use crate::{
 	VariableByteInteger,
 	packet::{
-		self, ControlPacketParseError, Decode, Encode, MqttControlPacket, QoS, kind::PacketType,
-		property::Properties,
+		self, ControlPacketParseError, Decode, Encode, MqttControlPacket, QoS,
+		fixed_header::MqttFixedHeader, kind::PacketType, property::Properties,
 	},
 };
 
@@ -12,8 +12,9 @@ impl MqttControlPacket {
 	pub fn subscribe(topics: Vec<TopicFilter>) -> Self {
 		debug_assert_ne!(topics.len(), 0);
 
-		Self::new(
-			PacketType::Subscribe,
+		Self::new_from_parts(
+			// Subscribe packets have a fixed header with flags set to 0x02.
+			MqttFixedHeader::new(PacketType::Subscribe, 0x02),
 			Some(packet::VariableHeader::Subscribe(Header {
 				packet_id: 20, // FIXME: hardcoded number
 				properties: Some(Properties {

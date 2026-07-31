@@ -52,7 +52,7 @@ impl DecodeFromType<Payload> for Payload {
 			PacketType::ConnAck | PacketType::PingReq | PacketType::PingResp => Ok((None, data)),
 
 			_ => {
-				tracing::warn!("Decoding of {:?} is not yet supported", kind);
+				tracing::warn!(?kind, "Decoding not yet supported");
 				Ok((None, data))
 			}
 		}

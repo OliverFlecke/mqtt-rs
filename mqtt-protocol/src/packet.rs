@@ -24,6 +24,7 @@ pub use control_packet::MqttControlPacket;
 pub use kind::PacketType;
 pub use payload::Payload;
 pub use protocol_version::ProtocolVersion;
+pub use publish::PublishOptions;
 pub use qos::QoS;
 pub use reason::ReasonCode;
 pub use variable_header::VariableHeader;

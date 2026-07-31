@@ -79,8 +79,12 @@ pub struct Publish {
 	pub qos: QoS,
 
 	/// Indicate how frequent the message should be sent
-	#[arg(short, long)]
+	#[arg(long)]
 	pub repeat_frequency_ms: Option<u64>,
+
+	/// Flag to indicate whether the message should be retained.
+	#[arg(short, long, default_value_t = false)]
+	pub retain: bool,
 }
 
 /// Arguments for the `subscribe` command.
