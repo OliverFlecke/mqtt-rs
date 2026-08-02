@@ -42,7 +42,7 @@ pub struct Payload {
 impl Encode for Payload {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		for code in &self.reason_codes {
-			w.write_all(&[*code as u8])?;
+			code.encode(w)?;
 		}
 
 		Ok(())

@@ -11,7 +11,7 @@ use tokio::{
 use tokio_util::{future::FutureExt, sync::CancellationToken};
 
 use mqtt_protocol::packet::{
-	Encode, MqttControlPacket, PublishOptions, QoS, ReasonCode, VariableHeader,
+	Encode, MqttControlPacket, PublishQoS, QoS, ReasonCode, VariableHeader,
 };
 use tracing::instrument;
 
@@ -132,26 +132,21 @@ impl MqttClient {
 		match qos {
 			QoS::AtMostOnce => self.publish_at_most_once(topic, payload, retain).await,
 			QoS::AtLeastOnce => self.publish_at_least_once(topic, payload, retain).await,
-			QoS::ExactlyOnce => todo!(),
+			QoS::ExactlyOnce => self.publish_exactly_once(topic, payload, retain).await,
 		}
 	}
 
 	/// Publish a message to a topic with at most once delivery.
 	#[instrument(skip(self), level = "debug")]
-	pub async fn publish_at_least_once(
-		&mut self,
+	pub async fn publish_at_most_once(
+		&self,
 		topic: String,
 		payload: Vec<u8>,
 		retain: bool,
 	) -> Result<(), ClientError> {
-		let options = PublishOptions {
-			qos: QoS::AtLeastOnce,
-			retain,
-			..Default::default()
-		};
-
 		tracing::debug!("Publishing packet");
-		let packet = MqttControlPacket::publish(topic, payload, options, None);
+		let packet =
+			MqttControlPacket::publish(topic, payload, PublishQoS::AtMostOnce, retain, false);
 		self.send(packet).await?;
 
 		Ok(())
@@ -159,24 +154,26 @@ impl MqttClient {
 
 	/// Publish a message with at most once delivery.
 	#[instrument(skip(self), level = "debug")]
-	pub async fn publish_at_most_once(
+	pub async fn publish_at_least_once(
 		&mut self,
 		topic: String,
 		payload: Vec<u8>,
 		retain: bool,
 	) -> Result<(), ClientError> {
-		let options = PublishOptions {
-			qos: QoS::AtMostOnce,
-			retain,
-			..Default::default()
-		};
-
 		let packet_id = self.session.get_next_packet_id();
 		let rx = self.listen_for_puback(packet_id);
 
 		tracing::debug!(?packet_id, "Publishing packet");
-		let packet = MqttControlPacket::publish(topic, payload, options, Some(packet_id));
+		let packet = MqttControlPacket::publish(
+			topic,
+			payload,
+			PublishQoS::AtLeastOnce(packet_id),
+			retain,
+			false,
+		);
 		self.send(packet).await?;
+
+		// TODO: must continue to send until puback is received
 
 		if let Err(err) = rx.await {
 			tracing::error!(?err, "Error waiting for ack");
@@ -185,6 +182,7 @@ impl MqttClient {
 		Ok(())
 	}
 
+	/// Listen for a puback packet with the given packet id.
 	fn listen_for_puback(&self, packet_id: u16) -> oneshot::Receiver<()> {
 		let mut sub = self.subscribe();
 		let ct = self.cancellation_token().clone();
@@ -206,6 +204,48 @@ impl MqttClient {
 		});
 
 		rx
+	}
+
+	/// Publish a message with exactly once delivery.
+	pub async fn publish_exactly_once(
+		&mut self,
+		topic: String,
+		payload: Vec<u8>,
+		retain: bool,
+	) -> Result<(), ClientError> {
+		let packet_id = self.session.get_next_packet_id();
+
+		tracing::debug!(?packet_id, "Publishing packet with exactly once delivery");
+		let packet = MqttControlPacket::publish(
+			topic,
+			payload,
+			PublishQoS::ExactlyOnce(packet_id),
+			retain,
+			false,
+		);
+
+		let mut sub = self.subscribe();
+		// TODO: must continue to send until pubrec is received
+		self.send(packet).await?;
+
+		let ct = self.cancellation_token().clone();
+		while let Some(Ok(packet)) = sub.recv().with_cancellation_token(&ct).await {
+			match packet.into() {
+				(Some(VariableHeader::PubRec(header)), _)
+					if header.packet_identifier == packet_id =>
+				{
+					tracing::debug!(?packet_id, "QoS 2 - Received pubrec for packet");
+					self.send(MqttControlPacket::pubrel(packet_id)).await?;
+				}
+				(Some(VariableHeader::PubComp(h)), _) if h.packet_identifier == packet_id => {
+					tracing::debug!(?packet_id, "QoS 2 - Received pubcomp for packet");
+					break;
+				}
+				_ => (),
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Spawn a task to read the data from the TCP socket. This will decode the
@@ -248,7 +288,7 @@ impl MqttClient {
 				// TODO: should we clear the buffer afterward here?
 				let packet = match MqttControlPacket::decode(&buf[0..length]) {
 					Err(err) => {
-						tracing::error!("Error parsing packet: {:?}", err);
+						tracing::error!(?err, "Error parsing packet");
 						continue;
 					}
 					Ok(packet) => packet,
@@ -286,7 +326,7 @@ impl MqttClient {
 					}
 				};
 
-				tracing::debug!(
+				tracing::trace!(
 					data = format!("{:2x?}", encoded),
 					"Sending data over socket"
 				);

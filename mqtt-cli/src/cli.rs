@@ -26,6 +26,10 @@ pub struct Cli {
 	#[arg(long, default_value_t = true)]
 	pub heartbeat: bool,
 
+	/// Log level to output information with.
+	#[arg(short, long, default_value_t = tracing::Level::WARN)]
+	pub log_level: tracing::Level,
+
 	#[command(subcommand)]
 	pub command: Command,
 }

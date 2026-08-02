@@ -1,19 +1,17 @@
 use clap::Parser;
 use mqtt_cli::{Cli, Command};
 use mqtt_client::{ConnectOptionsBuilder, MqttClient};
-use tracing::level_filters::LevelFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-	tracing::subscriber::set_global_default(
-		tracing_subscriber::fmt()
-			.with_max_level(LevelFilter::INFO)
-			.finish(),
-	)?;
-
 	let args = Cli::parse();
 
-	tracing::debug!("Starting mqtt-cli");
+	tracing::subscriber::set_global_default(
+		tracing_subscriber::fmt()
+			.with_max_level(args.log_level)
+			.finish(),
+	)?;
+	tracing::trace!("Starting mqtt-cli");
 
 	let options = ConnectOptionsBuilder::default()
 		.client_id(args.client_id)

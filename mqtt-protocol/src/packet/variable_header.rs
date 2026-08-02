@@ -2,7 +2,7 @@ use std::io::{self, Cursor};
 
 use crate::packet::{
 	self, ControlPacketParseError, Decode, DecodeFromType, Encode, connack, connect, disconnect,
-	kind::PacketType, puback, publish, suback,
+	kind::PacketType, puback, pubcomp, publish, pubrec, pubrel, suback, subscribe,
 };
 
 /// Represents the various variable headers that can be used in a packet.
@@ -13,6 +13,10 @@ pub enum VariableHeader {
 	Disconnect(packet::disconnect::Header),
 	Publish(packet::publish::Header),
 	PubAck(packet::puback::Header),
+	PubRec(packet::pubrec::Header),
+	PubRel(packet::pubrel::Header),
+	PubComp(packet::pubcomp::Header),
+
 	Subscribe(packet::subscribe::Header),
 	SubAck(packet::suback::Header),
 }
@@ -20,13 +24,16 @@ pub enum VariableHeader {
 impl Encode for VariableHeader {
 	fn encode(&self, data: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		match self {
-			VariableHeader::Connect(connect) => connect.encode(data),
-			VariableHeader::ConnAck(connack) => connack.encode(data),
-			VariableHeader::Disconnect(disconnect) => disconnect.encode(data),
-			VariableHeader::Publish(publish) => publish.encode(data),
-			VariableHeader::PubAck(puback) => puback.encode(data),
-			VariableHeader::Subscribe(subscribe) => subscribe.encode(data),
-			VariableHeader::SubAck(suback) => suback.encode(data),
+			VariableHeader::Connect(h) => h.encode(data),
+			VariableHeader::ConnAck(h) => h.encode(data),
+			VariableHeader::Disconnect(h) => h.encode(data),
+			VariableHeader::Publish(h) => h.encode(data),
+			VariableHeader::PubAck(h) => h.encode(data),
+			VariableHeader::Subscribe(h) => h.encode(data),
+			VariableHeader::SubAck(h) => h.encode(data),
+			VariableHeader::PubRec(h) => h.encode(data),
+			VariableHeader::PubRel(h) => h.encode(data),
+			VariableHeader::PubComp(w) => w.encode(data),
 		}
 	}
 }
@@ -61,6 +68,10 @@ impl DecodeFromType<VariableHeader> for VariableHeader {
 			PacketType::Disconnect => {
 				disconnect::Header::decode(data).map(|(h, d)| (Some(Self::Disconnect(h)), d))
 			}
+
+			PacketType::Subscribe => {
+				subscribe::Header::decode(data).map(|(h, d)| (Some(Self::Subscribe(h)), d))
+			}
 			PacketType::SubAck => {
 				suback::Header::decode(data).map(|(h, d)| (Some(Self::SubAck(h)), d))
 			}
@@ -71,10 +82,19 @@ impl DecodeFromType<VariableHeader> for VariableHeader {
 			PacketType::PubAck => {
 				puback::Header::decode(data).map(|(h, d)| (Some(Self::PubAck(h)), d))
 			}
+			PacketType::PubRec => {
+				pubrec::Header::decode(data).map(|(h, d)| (Some(Self::PubRec(h)), d))
+			}
+			PacketType::PubRel => {
+				pubrel::Header::decode(data).map(|(h, d)| (Some(Self::PubRel(h)), d))
+			}
+			PacketType::PubComp => {
+				pubcomp::Header::decode(data).map(|(h, d)| (Some(Self::PubComp(h)), d))
+			}
 
 			PacketType::PingReq | PacketType::PingResp => Ok((None, data)),
 
-			_ => {
+			PacketType::UnSubscribe | PacketType::UnsubAck | PacketType::Auth => {
 				tracing::warn!(?kind, "Variable header decoding not supported");
 				Ok((None, data))
 			}

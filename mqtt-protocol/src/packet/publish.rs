@@ -7,18 +7,18 @@ use crate::packet::{
 
 /// Represents options for a publish packet.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct PublishOptions {
+struct PublishOptions {
 	/// Indicates whether this is a duplicate message. It should be 'false' by default,
 	/// indicating to the server that this is the first time the message has been
 	/// attempted to be sent to the server.
 	/// `true` indicates that this message is likely a retry.
-	pub duplicate: bool,
+	duplicate: bool,
 
 	/// Quality of service to publish the message with.
-	pub qos: QoS,
+	qos: QoS,
 
 	/// Whether the message should be retained by the server.
-	pub retain: bool,
+	retain: bool,
 }
 
 impl From<PublishOptions> for u8 {
@@ -31,19 +31,48 @@ impl From<PublishOptions> for u8 {
 	}
 }
 
+/// Quality of service to publish the message with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PublishQoS {
+	AtMostOnce,
+	AtLeastOnce(u16),
+	ExactlyOnce(u16),
+}
+
+impl From<PublishQoS> for QoS {
+	fn from(val: PublishQoS) -> Self {
+		match val {
+			PublishQoS::AtMostOnce => QoS::AtMostOnce,
+			PublishQoS::AtLeastOnce(_) => QoS::AtLeastOnce,
+			PublishQoS::ExactlyOnce(_) => QoS::ExactlyOnce,
+		}
+	}
+}
+
 impl MqttControlPacket {
 	/// Create a packet to publish a message to a topic.
 	pub fn publish(
 		topic: String,
 		payload: Vec<u8>,
-		options: PublishOptions,
-		packet_identifier: Option<u16>,
+		qos: PublishQoS,
+		retain: bool,
+		duplicate: bool,
 	) -> Self {
+		let options = PublishOptions {
+			duplicate,
+			qos: qos.into(),
+			retain,
+		};
+
 		Self::new_from_parts(
 			MqttFixedHeader::new(PacketType::Publish, options.into()),
 			Some(packet::VariableHeader::Publish(Header {
 				topic,
-				packet_identifier,
+				packet_identifier: match qos {
+					PublishQoS::AtMostOnce => None,
+					PublishQoS::AtLeastOnce(id) => Some(id),
+					PublishQoS::ExactlyOnce(id) => Some(id),
+				},
 				properties: None,
 			})),
 			Some(packet::Payload::Publish(Payload(payload))),

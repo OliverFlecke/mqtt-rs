@@ -103,9 +103,19 @@ impl Encode for Payload {
 	}
 }
 
-impl Decode<Payload> for Payload {
-	fn decode(_data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
-		todo!()
+impl Decode<Self> for Payload {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		if data.is_empty() {
+			Ok((Self { client_id: None }, data))
+		} else {
+			let (client_id, data) = String::decode(data)?;
+			Ok((
+				Self {
+					client_id: Some(client_id),
+				},
+				data,
+			))
+		}
 	}
 }
 

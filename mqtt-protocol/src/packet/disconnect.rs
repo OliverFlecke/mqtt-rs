@@ -1,4 +1,4 @@
-use std::io::{self, Cursor, Write};
+use std::io::{self, Cursor};
 
 use crate::packet::{
 	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, kind::PacketType,
@@ -36,14 +36,14 @@ impl Header {
 
 impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
-		w.write_all(&[self.reason_code as u8])?;
+		self.reason_code.encode(w)?;
 		self.properties.encode(w)?;
 
 		Ok(())
 	}
 }
 
-impl Decode<Header> for Header {
+impl Decode<Self> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let reason_code = ReasonCode::from_repr(data[0])
 			.ok_or(ControlPacketParseError::UnknownReasonCode(data[0]))?;

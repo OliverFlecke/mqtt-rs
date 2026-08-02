@@ -73,9 +73,17 @@ impl Encode for Payload {
 	}
 }
 
-impl Decode<Payload> for Payload {
-	fn decode(_data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
-		todo!()
+impl Decode<Self> for Payload {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		let mut data = data;
+		let mut topics = Vec::new();
+		while !data.is_empty() {
+			let (topic, rest) = TopicFilter::decode(data)?;
+			data = rest;
+			topics.push(topic);
+		}
+
+		Ok((Self { topics }, data))
 	}
 }
 
@@ -109,6 +117,15 @@ impl Encode for TopicFilter {
 	}
 }
 
+impl Decode<TopicFilter> for TopicFilter {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		let (topic, data) = String::decode(data)?;
+		let (options, data) = SubscriptionOptions::decode(data)?;
+
+		Ok((Self { topic, options }, data))
+	}
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SubscriptionOptions {
 	qos: QoS,
@@ -120,5 +137,18 @@ impl Encode for SubscriptionOptions {
 		w.write_all(&[self.qos as u8])?;
 
 		Ok(())
+	}
+}
+
+impl Decode<Self> for SubscriptionOptions {
+	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+		if data.is_empty() {
+			return Err(ControlPacketParseError::NotEnoughData);
+		}
+
+		let qos =
+			QoS::from_repr(data[0]).ok_or(ControlPacketParseError::UnsupportedQoS(data[0]))?;
+
+		Ok((Self { qos }, &data[1..]))
 	}
 }

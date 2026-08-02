@@ -13,7 +13,9 @@ pub struct Header {
 
 impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
-		w.write_all(&[self.session_present as u8, self.reason_code as u8])
+		w.write_all(&[self.session_present as u8])?;
+		self.reason_code.encode(w)?;
+		Ok(())
 	}
 }
 
