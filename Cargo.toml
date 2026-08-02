@@ -18,3 +18,7 @@ tracing = { version = "0.1.44", default-features = false, features = [
   "attributes",
 ] }
 tracing-subscriber = { version = "0.3.23" }
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
