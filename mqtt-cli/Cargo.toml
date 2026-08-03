@@ -1,6 +1,6 @@
 [package]
 name = "mqtt-cli"
-version = "0.1.0"
+version = "0.2.0"
 repository = "https://github.com/OliverFlecke/mqtt-rs"
 authors = ["Oliver Fleckenstein <oliver@flecke.xyz>"]
 edition = "2024"
