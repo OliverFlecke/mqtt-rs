@@ -1,5 +1,22 @@
 /// QoS 2 delivery part 1
-use crate::packet::{Decode, Encode, ReasonCode, property::Properties};
+use crate::packet::{
+	Decode, Encode, MqttControlPacket, PacketType, ReasonCode, VariableHeader, property::Properties,
+};
+
+impl MqttControlPacket {
+	/// Create a control packet to acknowledge a publish packet.
+	pub fn pubrec(packet_identifier: u16) -> Self {
+		Self::new(
+			PacketType::PubRec,
+			Some(VariableHeader::PubRec(Header {
+				packet_identifier,
+				reason_code: ReasonCode::Success,
+				properties: None,
+			})),
+			None,
+		)
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct Header {

@@ -1,7 +1,25 @@
 /// QoS 2 delivery part 3
 use std::io::Cursor;
 
-use crate::packet::{ControlPacketParseError, Decode, Encode, ReasonCode, property::Properties};
+use crate::packet::{
+	ControlPacketParseError, Decode, Encode, MqttControlPacket, PacketType, ReasonCode,
+	VariableHeader, property::Properties,
+};
+
+impl MqttControlPacket {
+	/// Create a control packet to acknowledge a publish packet.
+	pub fn pubcomp(packet_id: u16) -> Self {
+		Self::new(
+			PacketType::PubComp,
+			Some(VariableHeader::PubComp(Header {
+				packet_identifier: packet_id,
+				reason_code: ReasonCode::Success,
+				properties: None,
+			})),
+			None,
+		)
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct Header {

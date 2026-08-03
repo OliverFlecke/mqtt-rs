@@ -122,15 +122,26 @@ impl MqttClient {
 						let Ok(flags) = PublishOptions::try_from(flags) else {
 							continue;
 						};
-						if flags.qos == QoS::AtMostOnce {
-							continue;
-						}
 						let Some(id) = header.packet_identifier() else {
 							continue;
 						};
 
-						if let Err(err) = sub_tx.send(MqttControlPacket::puback(id)).await {
+						let packet = match flags.qos {
+							QoS::AtMostOnce => continue,
+							QoS::AtLeastOnce => MqttControlPacket::puback(id),
+							QoS::ExactlyOnce => MqttControlPacket::pubrec(id),
+						};
+
+						if let Err(err) = sub_tx.send(packet).await {
 							tracing::error!(?err, "Error sending puback");
+						}
+					}
+					(Some(VariableHeader::PubRel(header)), _) => {
+						if let Err(err) = sub_tx
+							.send(MqttControlPacket::pubcomp(header.packet_identifier))
+							.await
+						{
+							tracing::error!(?err, "Error sending pubrel");
 						}
 					}
 

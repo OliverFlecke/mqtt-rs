@@ -40,8 +40,17 @@ impl Encode for Header {
 impl Decode<Self> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let (packet_identifier, data) = u16::decode(data)?;
-		let (reason_code, data) = ReasonCode::decode(data)?;
-		let (properties, data) = Option::<Properties>::decode(data)?;
+		let (reason_code, data) = if data.is_empty() {
+			(ReasonCode::Success, data)
+		} else {
+			ReasonCode::decode(data)?
+		};
+
+		let (properties, data) = if data.is_empty() {
+			(None, data)
+		} else {
+			Option::<Properties>::decode(data)?
+		};
 
 		Ok((
 			Self {
