@@ -11,14 +11,14 @@ use crate::{
 impl MqttControlPacket {
 	/// Create a control packet to subscribe to one or more topics (most be at
 	/// least one topic).
-	pub fn subscribe(topics: Vec<TopicFilter>) -> Self {
+	pub fn subscribe(packet_id: u16, topics: Vec<TopicFilter>) -> Self {
 		debug_assert_ne!(topics.len(), 0);
 
 		Self::new_from_parts(
 			// Subscribe packets have a fixed header with flags set to 0x02.
 			MqttFixedHeader::new(PacketType::Subscribe, 0x02),
 			Some(packet::VariableHeader::Subscribe(Header {
-				packet_id: 20, // FIXME: hardcoded number
+				packet_id,
 				properties: Some(Properties {
 					subscription_identifier: Some(VariableByteInteger::try_from(10).unwrap()), // FIXME: hardcoded number
 					..Default::default()

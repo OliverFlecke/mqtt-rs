@@ -8,7 +8,7 @@ impl MqttClient {
 	where
 		F: Fn(MqttControlPacket) + Send + 'static,
 	{
-		let mut rx = self.subscribe();
+		let mut rx = self.subscribe_for_packet();
 		let ct_client = self.cancellation_token().clone();
 
 		let ct = CancellationToken::new();

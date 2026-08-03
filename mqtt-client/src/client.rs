@@ -10,7 +10,7 @@ use tokio::{
 use tokio_util::{future::FutureExt, sync::CancellationToken};
 
 use mqtt_protocol::packet::{
-	Encode, MqttControlPacket, PublishQoS, QoS, ReasonCode, Topic, VariableHeader,
+	Encode, MqttControlPacket, PublishQoS, QoS, ReasonCode, Topic, TopicFilter, VariableHeader,
 };
 use tracing::instrument;
 
@@ -147,8 +147,15 @@ impl MqttClient {
 	}
 
 	/// Subscribe to receive packets from the broker.
-	pub fn subscribe(&self) -> broadcast::Receiver<MqttControlPacket> {
+	pub fn subscribe_for_packet(&self) -> broadcast::Receiver<MqttControlPacket> {
 		self.rx.subscribe()
+	}
+
+	/// Subscribe this client to listen to a topic.
+	pub async fn subscribe(&mut self, topic: TopicFilter) -> Result<(), ClientError> {
+		let packet_id = self.session.get_next_packet_id();
+		self.send_packet(MqttControlPacket::subscribe(packet_id, vec![topic]))
+			.await
 	}
 
 	/// Publish a message to a topic
@@ -194,7 +201,7 @@ impl MqttClient {
 		let packet_id = self.session.get_next_packet_id();
 		tracing::debug!(?packet_id, "Publishing packet with at least once delivery");
 
-		let mut sub = self.subscribe();
+		let mut sub = self.subscribe_for_packet();
 		let sending_ct = self.publish_packet_repeat(move |count| {
 			MqttControlPacket::publish(
 				topic.clone(),
@@ -234,7 +241,7 @@ impl MqttClient {
 
 		tracing::debug!(?packet_id, "Publishing packet with exactly once delivery");
 
-		let mut sub = self.subscribe();
+		let mut sub = self.subscribe_for_packet();
 		let mut sending_ct = self.publish_packet_repeat(move |count| {
 			MqttControlPacket::publish(
 				topic.clone(),

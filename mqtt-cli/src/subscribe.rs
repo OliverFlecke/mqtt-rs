@@ -30,16 +30,11 @@ fn on_message(packet: MqttControlPacket) {
 	}
 }
 
-pub async fn handler(client: MqttClient, args: Subscribe) -> anyhow::Result<()> {
+pub async fn handler(mut client: MqttClient, args: Subscribe) -> anyhow::Result<()> {
 	tracing::debug!(topic = ?args.topic, "Subscribing to topic: {:?}", args.topic);
 
 	let ct = client.on_message(on_message);
-
-	client
-		.send_packet(MqttControlPacket::subscribe(vec![
-			args.topic.as_str().into(),
-		]))
-		.await?;
+	client.subscribe(args.topic.as_str().into()).await?;
 
 	tokio::select! {
 		_ = signal::ctrl_c() => {

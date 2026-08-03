@@ -1,5 +1,6 @@
 mod cli;
 mod publish;
+pub mod repl;
 mod subscribe;
 
 pub use cli::*;

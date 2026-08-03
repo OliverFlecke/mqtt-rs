@@ -1,7 +1,7 @@
 use clap::Parser;
 use mqtt_protocol::packet;
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
 	/// Host to connect to.
@@ -53,10 +53,12 @@ impl From<QoS> for packet::QoS {
 	}
 }
 
-#[derive(clap::Subcommand)]
+#[derive(Debug, clap::Subcommand)]
 pub enum Command {
 	/// Connect to a broker, to validate the connection.
 	Connect,
+
+	Repl,
 
 	/// Publish a message to a topic.
 	#[command(alias("pub"))]

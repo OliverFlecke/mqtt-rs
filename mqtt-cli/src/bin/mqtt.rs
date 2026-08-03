@@ -22,8 +22,11 @@ async fn main() -> anyhow::Result<()> {
 		Command::Connect => {
 			// Should we do anything here? The client would already be connected above
 		}
-		Command::Publish(publish) => mqtt_cli::publish_handler(client, publish).await?,
+		Command::Publish(publish) => {
+			mqtt_cli::publish_handler(client, publish).await?;
+		}
 		Command::Subscribe(sub) => mqtt_cli::subscribe_handler(client, sub).await?,
+		Command::Repl => mqtt_cli::repl::handler(client).await?,
 	}
 
 	Ok(())

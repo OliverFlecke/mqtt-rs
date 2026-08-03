@@ -5,7 +5,7 @@ use tokio::time::sleep;
 
 use crate::Publish;
 
-pub async fn handler(mut client: MqttClient, args: Publish) -> anyhow::Result<()> {
+pub async fn handler(mut client: MqttClient, args: Publish) -> anyhow::Result<MqttClient> {
 	loop {
 		if let Err(err) = client
 			.publish(
@@ -29,5 +29,5 @@ pub async fn handler(mut client: MqttClient, args: Publish) -> anyhow::Result<()
 		}
 	}
 
-	Ok(())
+	Ok(client)
 }
