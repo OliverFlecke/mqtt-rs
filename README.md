@@ -24,7 +24,7 @@ The project is laid out with three crates:
 	- [x] Publish
 	- [x] Publish QoS 1
 	- [ ] Subscribe QoS 1
-	- [ ] Publish QoS 2
+	- [x] Publish QoS 2
 	- [ ] Subscribe QoS 2
 	- [ ] no_std support - currently there are dependencies on some types in `std`
 	      which is used for encoding and decoding of packets, but it is quite
@@ -33,7 +33,7 @@ The project is laid out with three crates:
 	- [ ] Auth
 - [ ] Client
 	- [x] Connect
-	- [ ] Session management
+	- [x] Session management
 	- [ ] Automatic reconnect
 	- [x] TCP connection
 	- [ ] TLS ?

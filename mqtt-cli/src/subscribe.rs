@@ -36,7 +36,7 @@ pub async fn handler(client: MqttClient, args: Subscribe) -> anyhow::Result<()> 
 	let ct = client.on_message(on_message);
 
 	client
-		.send(MqttControlPacket::subscribe(vec![
+		.send_packet(MqttControlPacket::subscribe(vec![
 			args.topic.as_str().into(),
 		]))
 		.await?;

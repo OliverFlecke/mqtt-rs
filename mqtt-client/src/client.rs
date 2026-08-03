@@ -123,7 +123,7 @@ impl MqttClient {
 	/// Disconnect from the broker.
 	pub async fn disconnect(self) -> Result<(), ClientError> {
 		tracing::debug!("Disconnecting");
-		self.send(MqttControlPacket::disconnect()).await?;
+		self.send_packet(MqttControlPacket::disconnect()).await?;
 		self.ct.cancel();
 
 		Ok(())
@@ -133,35 +133,8 @@ impl MqttClient {
 	///
 	/// This is a low-level API to send packet level messages. See `publish` for
 	/// a higher-level API to publish messages.
-	pub async fn send(&self, packet: MqttControlPacket) -> Result<(), ClientError> {
+	pub async fn send_packet(&self, packet: MqttControlPacket) -> Result<(), ClientError> {
 		self.tx.send(packet).await.map_err(ClientError::SendFailed)
-	}
-
-	/// Send a packet to the broker repeatedly until the returned cancellation
-	/// token is canceled.
-	pub async fn send_packet_repeat(
-		&self,
-		packet: MqttControlPacket,
-		interval: Duration,
-	) -> CancellationToken {
-		let ct = CancellationToken::new();
-
-		let task_ct = ct.clone();
-		let tx = self.tx.clone();
-		tokio::spawn(async move {
-			loop {
-				if let Err(err) = tx.send(packet.clone()).await {
-					tracing::error!(?err, "Error sending packet");
-				}
-				sleep(interval).with_cancellation_token(&task_ct).await;
-
-				if task_ct.is_cancelled() {
-					break;
-				}
-			}
-		});
-
-		ct
 	}
 
 	/// Flush all packets to the broker.
@@ -205,7 +178,7 @@ impl MqttClient {
 		tracing::debug!("Publishing packet");
 		let packet =
 			MqttControlPacket::publish(topic, payload, PublishQoS::AtMostOnce, retain, false);
-		self.send(packet).await?;
+		self.send_packet(packet).await?;
 
 		Ok(())
 	}
@@ -219,38 +192,19 @@ impl MqttClient {
 		retain: bool,
 	) -> Result<(), ClientError> {
 		let packet_id = self.session.get_next_packet_id();
-
-		let retry_interval = self.publish_retry_interval;
-		let sending_ct = CancellationToken::new();
-		let task_sending_ct = sending_ct.clone();
-		let tx = self.tx.clone();
-		tokio::spawn(async move {
-			let mut duplicate = false;
-			loop {
-				let packet = MqttControlPacket::publish(
-					topic.clone(),
-					payload.clone(),
-					PublishQoS::AtLeastOnce(packet_id),
-					retain,
-					duplicate,
-				);
-				if let Err(err) = tx.send(packet.clone()).await {
-					tracing::error!(?err, "Error sending packet");
-				}
-
-				sleep(retry_interval)
-					.with_cancellation_token(&task_sending_ct)
-					.await;
-
-				if task_sending_ct.is_cancelled() {
-					break;
-				}
-
-				duplicate = true;
-			}
-		});
+		tracing::debug!(?packet_id, "Publishing packet with at least once delivery");
 
 		let mut sub = self.subscribe();
+		let sending_ct = self.publish_packet_repeat(move |count| {
+			MqttControlPacket::publish(
+				topic.clone(),
+				payload.clone(),
+				PublishQoS::AtLeastOnce(packet_id),
+				retain,
+				count != 0,
+			)
+		});
+
 		while let Some(Ok(packet)) = sub
 			.recv()
 			.with_cancellation_token(self.cancellation_token())
@@ -279,17 +233,17 @@ impl MqttClient {
 		let packet_id = self.session.get_next_packet_id();
 
 		tracing::debug!(?packet_id, "Publishing packet with exactly once delivery");
-		let packet = MqttControlPacket::publish(
-			topic,
-			payload,
-			PublishQoS::ExactlyOnce(packet_id),
-			retain,
-			false,
-		);
 
 		let mut sub = self.subscribe();
-		// TODO: must continue to send until pubrec is received
-		self.send(packet).await?;
+		let mut sending_ct = self.publish_packet_repeat(move |count| {
+			MqttControlPacket::publish(
+				topic.clone(),
+				payload.clone(),
+				PublishQoS::ExactlyOnce(packet_id),
+				retain,
+				count != 0,
+			)
+		});
 
 		let ct = self.cancellation_token().clone();
 		while let Some(Ok(packet)) = sub.recv().with_cancellation_token(&ct).await {
@@ -298,10 +252,14 @@ impl MqttClient {
 					if header.packet_identifier == packet_id =>
 				{
 					tracing::debug!(?packet_id, "QoS 2 - Received pubrec for packet");
-					self.send(MqttControlPacket::pubrel(packet_id)).await?;
+
+					sending_ct.cancel();
+					sending_ct =
+						self.publish_packet_repeat(move |_| MqttControlPacket::pubrel(packet_id));
 				}
 				(Some(VariableHeader::PubComp(h)), _) if h.packet_identifier == packet_id => {
 					tracing::debug!(?packet_id, "QoS 2 - Received pubcomp for packet");
+					sending_ct.cancel();
 					break;
 				}
 				_ => (),
@@ -309,6 +267,42 @@ impl MqttClient {
 		}
 
 		Ok(())
+	}
+
+	/// Spawn a task that will send a packet repeatedly until the returned
+	/// cancellation token is canceled.
+	///
+	/// The packet is created by the provided closure, which takes the number
+	/// of times packet has been published (starting from 0).
+	fn publish_packet_repeat<F>(&self, create_packet: F) -> CancellationToken
+	where
+		F: Fn(u16) -> MqttControlPacket + Send + 'static,
+	{
+		let retry_interval = self.publish_retry_interval;
+		let tx = self.tx.clone();
+
+		let ct = CancellationToken::new();
+		let task_ct = ct.clone();
+		tokio::spawn(async move {
+			let ct = task_ct;
+			let mut count = 0;
+
+			loop {
+				let packet = create_packet(count);
+				if let Err(err) = tx.send(packet.clone()).await {
+					tracing::error!(?err, "Error sending packet");
+				}
+
+				sleep(retry_interval).with_cancellation_token(&ct).await;
+				if ct.is_cancelled() {
+					break;
+				}
+
+				count += 1;
+			}
+		});
+
+		ct
 	}
 
 	/// Spawn a task to read the data from the TCP socket. This will decode the
