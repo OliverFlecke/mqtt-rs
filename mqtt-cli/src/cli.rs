@@ -1,5 +1,5 @@
 use clap::Parser;
-use mqtt_protocol::packet;
+use mqtt_protocol::packet::{self};
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -99,4 +99,42 @@ pub struct Subscribe {
 	/// Topic to subscribe to.
 	#[arg()]
 	pub topic: String,
+
+	#[arg(short, long, default_value = "at-most-once")]
+	pub qos: QoS,
+
+	#[arg(long, default_value = "send")]
+	pub retain_handling: RetainHandling,
+
+	#[arg(long)]
+	pub retain_as_published: bool,
+
+	#[arg(long)]
+	pub no_local: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
+#[repr(u8)]
+pub enum RetainHandling {
+	/// Send retained messages at the time of subscribe
+	#[default]
+	Send = 0,
+
+	/// Send retained messages at subscribe only if the subscription does not currently exist
+	SendOnlyIfSubscriptionDoesNotExist = 1,
+
+	/// Do not send retained messages at the time of subscribe
+	DoNotSend = 2,
+}
+
+impl From<RetainHandling> for packet::RetainHandling {
+	fn from(val: RetainHandling) -> Self {
+		match val {
+			RetainHandling::Send => packet::RetainHandling::Send,
+			RetainHandling::SendOnlyIfSubscriptionDoesNotExist => {
+				packet::RetainHandling::SendOnlyIfSubscriptionDoesNotExist
+			}
+			RetainHandling::DoNotSend => packet::RetainHandling::DoNotSend,
+		}
+	}
 }

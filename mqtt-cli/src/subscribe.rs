@@ -1,5 +1,7 @@
 use mqtt_client::MqttClient;
-use mqtt_protocol::packet::{MqttControlPacket, Payload, VariableHeader};
+use mqtt_protocol::packet::{
+	MqttControlPacket, Payload, SubscriptionOptions, TopicFilter, VariableHeader,
+};
 use tokio::signal;
 
 use crate::Subscribe;
@@ -31,10 +33,20 @@ fn on_message(packet: MqttControlPacket) {
 }
 
 pub async fn handler(mut client: MqttClient, args: Subscribe) -> anyhow::Result<()> {
-	tracing::debug!(topic = ?args.topic, "Subscribing to topic: {:?}", args.topic);
+	let topic = TopicFilter::new_with_options(
+		args.topic.as_str(),
+		SubscriptionOptions {
+			qos: args.qos.into(),
+			no_local: args.no_local,
+			retain_as_published: args.retain_as_published,
+			retain_handling: args.retain_handling.into(),
+		},
+	);
+
+	tracing::debug!(topic = ?topic, "Subscribing to topic: {}", args.topic);
 
 	let ct = client.on_message(on_message);
-	client.subscribe(args.topic.as_str().into()).await?;
+	client.subscribe(topic).await?;
 
 	tokio::select! {
 		_ = signal::ctrl_c() => {

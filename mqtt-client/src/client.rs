@@ -21,6 +21,7 @@ use crate::session::Session;
 pub struct ConnectOptions {
 	client_id: Option<String>,
 	publish_retry_interval: Duration,
+	health_check_interval: Duration,
 }
 
 /// Builder for connection options.
@@ -28,6 +29,7 @@ pub struct ConnectOptions {
 pub struct ConnectOptionsBuilder {
 	client_id: Option<String>,
 	publish_retry_interval: Option<Duration>,
+	health_check_interval: Option<Duration>,
 }
 
 impl ConnectOptionsBuilder {
@@ -41,12 +43,20 @@ impl ConnectOptionsBuilder {
 		self
 	}
 
+	pub fn health_check_interval(mut self, interval: Duration) -> Self {
+		self.health_check_interval = Some(interval);
+		self
+	}
+
 	pub fn build(self) -> ConnectOptions {
 		ConnectOptions {
 			client_id: self.client_id,
 			publish_retry_interval: self
 				.publish_retry_interval
 				.unwrap_or(Duration::from_millis(500)),
+			health_check_interval: self
+				.health_check_interval
+				.unwrap_or(Duration::from_secs(30)),
 		}
 	}
 }
@@ -85,7 +95,11 @@ impl MqttClient {
 		tracing::debug!(?session, "Connected");
 
 		let tx_health = writer_tx.clone();
-		tokio::spawn(async { health_check(tx_health, Duration::from_secs(5)).await });
+		let health_check_interval = options.health_check_interval;
+		let health_chec_ct = ct.clone();
+		tokio::spawn(async move {
+			health_check(tx_health, health_check_interval, health_chec_ct).await
+		});
 
 		// TODO: must have at least one subscriber to the reader, so this is kept
 		// around for now. Secondly, this is needed to track the internal state
@@ -465,11 +479,15 @@ pub enum ClientError {
 async fn health_check(
 	writer: mpsc::Sender<MqttControlPacket>,
 	interval: Duration,
+	ct: CancellationToken,
 ) -> Result<(), anyhow::Error> {
 	loop {
 		// TODO: this timer should reset ever time a packet is sent from the client,
 		// to avoid sending a ping packet.
-		sleep(interval).await;
+		sleep(interval).with_cancellation_token(&ct).await;
+		if ct.is_cancelled() {
+			return Ok(());
+		}
 
 		let packet = MqttControlPacket::create_ping_req();
 		writer.send(packet).await?;

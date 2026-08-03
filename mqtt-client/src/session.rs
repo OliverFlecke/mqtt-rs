@@ -6,7 +6,6 @@ pub struct Session {
 	pub client_id: String,
 
 	/// Last packet ID used to identify the packets sent by the client.
-	#[allow(dead_code)]
 	last_packet_id: u16,
 	// pub maximum_packet_size: u32,
 	// pub receive_maximum: u16,
@@ -23,6 +22,10 @@ impl Session {
 
 	/// Get the next packet id to use.
 	pub fn get_next_packet_id(&mut self) -> u16 {
+		if self.last_packet_id == u16::MAX {
+			self.last_packet_id = 0;
+		}
+
 		self.last_packet_id += 1;
 		self.last_packet_id
 	}

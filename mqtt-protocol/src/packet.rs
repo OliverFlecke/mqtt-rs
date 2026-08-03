@@ -38,7 +38,7 @@ pub use publish::PublishQoS;
 pub use qos::QoS;
 pub use reason::ReasonCode;
 pub use topic::Topic;
-pub use topic_filter::TopicFilter;
+pub use topic_filter::{RetainHandling, SubscriptionOptions, TopicFilter};
 pub use variable_header::VariableHeader;
 
 /// Trait for types that can be encoded into a byte vector following the MQTT
@@ -86,4 +86,6 @@ pub enum ControlPacketParseError {
 	InvalidVariableByteIntegerLength,
 	#[error("Unknown property {0:x}")]
 	UnknownProperty(u8),
+	#[error("Unsupported retain handling {0:x}")]
+	UnsupportedRetainHandling(u8),
 }
