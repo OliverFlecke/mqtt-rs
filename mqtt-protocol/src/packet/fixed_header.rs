@@ -26,6 +26,10 @@ impl MqttFixedHeader {
 		self.kind
 	}
 
+	pub fn flags(&self) -> u8 {
+		self.flags
+	}
+
 	pub fn set_length(&mut self, len: VariableByteInteger) {
 		self.remaining_length = len;
 	}
@@ -35,7 +39,7 @@ impl From<PacketType> for MqttFixedHeader {
 	fn from(kind: PacketType) -> Self {
 		Self {
 			kind,
-			flags: 0,
+			flags: Default::default(),
 			remaining_length: VariableByteInteger::default(),
 		}
 	}
@@ -60,12 +64,15 @@ impl Decode<Self> for MqttFixedHeader {
 		let kind = data[0] >> 4;
 		let kind =
 			PacketType::from_repr(kind).ok_or(ControlPacketParseError::UnknownPacketType(kind))?;
+		let flags = data[0] & 0xF;
 		let (remaining_length, data) = VariableByteInteger::decode(&data[1..])?;
+
+		tracing::debug!(?kind, ?flags, ?remaining_length, "Decoded fixed header");
 
 		Ok((
 			Self {
 				kind,
-				flags: 0, // TODO: parse flags
+				flags,
 				remaining_length,
 			},
 			data,

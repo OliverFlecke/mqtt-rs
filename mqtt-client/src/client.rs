@@ -10,7 +10,8 @@ use tokio::{
 use tokio_util::{future::FutureExt, sync::CancellationToken};
 
 use mqtt_protocol::packet::{
-	Encode, MqttControlPacket, PublishQoS, QoS, ReasonCode, Topic, TopicFilter, VariableHeader,
+	Encode, MqttControlPacket, PublishOptions, PublishQoS, QoS, ReasonCode, Topic, TopicFilter,
+	VariableHeader,
 };
 use tracing::instrument;
 
@@ -105,16 +106,33 @@ impl MqttClient {
 		// around for now. Secondly, this is needed to track the internal state
 		// of the client, and reconnect the client if it disconnects.
 		let sub = reader_tx.subscribe();
-		tokio::spawn(async {
+		let sub_tx = writer_tx.clone();
+		tokio::spawn(async move {
 			let mut sub = sub;
 			while let Ok(packet) = sub.recv().await {
 				tracing::trace!(?packet, "Received packet");
 
+				let flags = packet.fixed_header().flags();
 				match packet.into() {
 					(Some(VariableHeader::Disconnect(header)), _) => {
 						tracing::info!(reason = ?header.reason_code(), "Disconnected");
 					}
 					(Some(VariableHeader::Subscribe(_)), _) => {}
+					(Some(VariableHeader::Publish(header)), _) => {
+						let Ok(flags) = PublishOptions::try_from(flags) else {
+							continue;
+						};
+						if flags.qos == QoS::AtMostOnce {
+							continue;
+						}
+						let Some(id) = header.packet_identifier() else {
+							continue;
+						};
+
+						if let Err(err) = sub_tx.send(MqttControlPacket::puback(id)).await {
+							tracing::error!(?err, "Error sending puback");
+						}
+					}
 
 					_ => {}
 				}
@@ -446,7 +464,7 @@ impl MqttClient {
 			.recv()
 			.await
 			.map_err(|_| ClientError::ReceiveFailed)?
-			.header()
+			.variable_header()
 		{
 			Some(VariableHeader::ConnAck(header)) if header.reason_code == ReasonCode::Success => {
 				let client_id = header

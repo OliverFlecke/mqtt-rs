@@ -1,8 +1,8 @@
 use std::io::{self, Cursor};
 
 use crate::packet::{
-	self, Decode, DecodeFromType, Encode, PacketType, connect, publish, suback, subscribe,
-	unsuback, unsubscribe,
+	self, Decode, DecodeFromType, Encode, MqttFixedHeader, PacketType, connect, publish, suback,
+	subscribe, unsuback, unsubscribe,
 };
 
 /// Payload for a packet.
@@ -41,11 +41,12 @@ impl Encode for Option<Payload> {
 	}
 }
 
-impl DecodeFromType<Payload> for Payload {
+impl<'a> DecodeFromType<'a, Self> for Payload {
 	fn decode_from_type(
-		kind: packet::PacketType,
-		data: &[u8],
-	) -> Result<(Option<Self>, &[u8]), packet::ControlPacketParseError> {
+		header: &MqttFixedHeader,
+		data: &'a [u8],
+	) -> Result<(Option<Self>, &'a [u8]), packet::ControlPacketParseError> {
+		let kind = header.kind();
 		tracing::trace!(?kind, data = format!("{:2x?}", data), "Decoding payload");
 
 		match kind {

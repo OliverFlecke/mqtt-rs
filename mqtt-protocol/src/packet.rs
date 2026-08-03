@@ -34,7 +34,7 @@ pub use kind::PacketType;
 pub use payload::Payload;
 pub use property::Properties;
 pub use protocol_version::ProtocolVersion;
-pub use publish::PublishQoS;
+pub use publish::{PublishOptions, PublishQoS};
 pub use qos::QoS;
 pub use reason::ReasonCode;
 pub use topic::Topic;
@@ -57,11 +57,11 @@ pub(crate) trait Decode<T> {
 	fn decode(data: &[u8]) -> Result<(T, &[u8]), ControlPacketParseError>;
 }
 
-pub(crate) trait DecodeFromType<T> {
+pub(crate) trait DecodeFromType<'a, T> {
 	fn decode_from_type(
-		kind: PacketType,
-		data: &[u8],
-	) -> Result<(Option<T>, &[u8]), ControlPacketParseError>;
+		header: &MqttFixedHeader,
+		data: &'a [u8],
+	) -> Result<(Option<T>, &'a [u8]), ControlPacketParseError>;
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

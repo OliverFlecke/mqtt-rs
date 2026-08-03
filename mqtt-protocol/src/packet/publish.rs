@@ -1,24 +1,24 @@
 use std::io::{self, Cursor};
 
 use crate::packet::{
-	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, QoS, Topic,
+	self, ControlPacketParseError, Decode, DecodeFromType, Encode, MqttControlPacket, QoS, Topic,
 	fixed_header::MqttFixedHeader, kind::PacketType, property::Properties,
 };
 
 /// Represents options for a publish packet.
 #[derive(Debug, Clone, Copy, Default)]
-struct PublishOptions {
+pub struct PublishOptions {
 	/// Indicates whether this is a duplicate message. It should be 'false' by default,
 	/// indicating to the server that this is the first time the message has been
 	/// attempted to be sent to the server.
 	/// `true` indicates that this message is likely a retry.
-	duplicate: bool,
+	pub duplicate: bool,
 
 	/// Quality of service to publish the message with.
-	qos: QoS,
+	pub qos: QoS,
 
 	/// Whether the message should be retained by the server.
-	retain: bool,
+	pub retain: bool,
 }
 
 impl From<PublishOptions> for u8 {
@@ -28,6 +28,20 @@ impl From<PublishOptions> for u8 {
 		value |= (val.qos as u8) << 1;
 		value |= val.retain as u8;
 		value
+	}
+}
+
+impl TryFrom<u8> for PublishOptions {
+	type Error = ControlPacketParseError;
+
+	fn try_from(value: u8) -> Result<Self, Self::Error> {
+		let qos = (value & 0b0110) >> 1;
+
+		Ok(Self {
+			duplicate: value & 0x8 != 0,
+			qos: QoS::from_repr(qos).ok_or(ControlPacketParseError::UnsupportedQoS(qos))?,
+			retain: value & 0b1 != 0,
+		})
 	}
 }
 
@@ -99,6 +113,10 @@ impl Header {
 	pub fn topic(&self) -> &str {
 		self.topic.as_ref()
 	}
+
+	pub fn packet_identifier(&self) -> Option<u16> {
+		self.packet_identifier
+	}
 }
 
 impl Encode for Header {
@@ -113,21 +131,32 @@ impl Encode for Header {
 	}
 }
 
-impl Decode<Self> for Header {
-	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
+impl<'a> DecodeFromType<'a, Self> for Header {
+	fn decode_from_type(
+		header: &MqttFixedHeader,
+		data: &'a [u8],
+	) -> Result<(Option<Self>, &'a [u8]), ControlPacketParseError> {
 		let (topic, data) = Topic::decode(data)?;
 
-		// TODO: how do we know if there is a packet identifier or not? It should
-		// only be present if the QoS is > 0.
-		// let (packet_identifier, data) = Option::<String>::decode(data)?;
+		let header_flags = header.flags();
+		let flags: PublishOptions = header.flags().try_into()?;
+		tracing::debug!(?flags, ?header_flags, "Decoding publish header");
+
+		let (packet_identifier, data) = if flags.qos > QoS::AtMostOnce {
+			let (id, data) = u16::decode(data)?;
+			(Some(id), data)
+		} else {
+			(None, data)
+		};
+
 		let (properties, data) = Option::<Properties>::decode(data)?;
 
 		Ok((
-			Self {
+			Some(Self {
 				topic,
-				packet_identifier: None,
+				packet_identifier,
 				properties,
-			},
+			}),
 			data,
 		))
 	}

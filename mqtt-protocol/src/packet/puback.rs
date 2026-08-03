@@ -1,6 +1,19 @@
 use std::io::{self, Cursor};
 
-use crate::packet::{ControlPacketParseError, Decode, Encode};
+use crate::packet::{self, ControlPacketParseError, Decode, Encode, MqttControlPacket, PacketType};
+
+impl MqttControlPacket {
+	/// Create a control packet to acknowledge a publish packet.
+	pub fn puback(packet_id: u16) -> Self {
+		Self::new(
+			PacketType::PubAck,
+			Some(packet::VariableHeader::PubAck(Header {
+				packet_identifier: packet_id,
+			})),
+			None,
+		)
+	}
+}
 
 /// Represents the header of a puback packet.
 #[derive(Debug, Clone)]

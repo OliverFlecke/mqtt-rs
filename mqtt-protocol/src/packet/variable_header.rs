@@ -1,9 +1,9 @@
 use std::io::{self, Cursor};
 
 use crate::packet::{
-	ControlPacketParseError, Decode, DecodeFromType, Encode, connack, connect, disconnect,
-	kind::PacketType, puback, pubcomp, publish, pubrec, pubrel, suback, subscribe, unsuback,
-	unsubscribe,
+	ControlPacketParseError, Decode, DecodeFromType, Encode, MqttFixedHeader, connack, connect,
+	disconnect, kind::PacketType, puback, pubcomp, publish, pubrec, pubrel, suback, subscribe,
+	unsuback, unsubscribe,
 };
 
 /// Represents the various variable headers that can be used in a packet.
@@ -54,18 +54,18 @@ impl Encode for Option<VariableHeader> {
 	}
 }
 
-impl DecodeFromType<VariableHeader> for VariableHeader {
+impl<'a> DecodeFromType<'a, Self> for VariableHeader {
 	fn decode_from_type(
-		kind: PacketType,
-		data: &[u8],
-	) -> Result<(Option<Self>, &[u8]), ControlPacketParseError> {
+		header: &MqttFixedHeader,
+		data: &'a [u8],
+	) -> Result<(Option<Self>, &'a [u8]), ControlPacketParseError> {
 		tracing::trace!(
-			?kind,
+			?header,
 			data = format!("{:2x?}", data),
 			"Decoding variable header"
 		);
 
-		match kind {
+		match header.kind() {
 			PacketType::Connect => {
 				connect::Header::decode(data).map(|(h, d)| (Some(Self::Connect(h)), d))
 			}
@@ -76,9 +76,8 @@ impl DecodeFromType<VariableHeader> for VariableHeader {
 				disconnect::Header::decode(data).map(|(h, d)| (Some(Self::Disconnect(h)), d))
 			}
 
-			PacketType::Publish => {
-				publish::Header::decode(data).map(|(h, d)| (Some(Self::Publish(h)), d))
-			}
+			PacketType::Publish => publish::Header::decode_from_type(header, data)
+				.map(|(h, d)| (h.map(Self::Publish), d)),
 			PacketType::PubAck => {
 				puback::Header::decode(data).map(|(h, d)| (Some(Self::PubAck(h)), d))
 			}
@@ -95,6 +94,7 @@ impl DecodeFromType<VariableHeader> for VariableHeader {
 			PacketType::Subscribe => {
 				subscribe::Header::decode(data).map(|(h, d)| (Some(Self::Subscribe(h)), d))
 			}
+
 			PacketType::SubAck => {
 				suback::Header::decode(data).map(|(h, d)| (Some(Self::SubAck(h)), d))
 			}
@@ -108,7 +108,7 @@ impl DecodeFromType<VariableHeader> for VariableHeader {
 			PacketType::PingReq | PacketType::PingResp => Ok((None, data)),
 
 			PacketType::Auth => {
-				tracing::warn!(?kind, "Variable header decoding not supported");
+				tracing::warn!(?header, "Variable header decoding not supported");
 				Ok((None, data))
 			}
 		}

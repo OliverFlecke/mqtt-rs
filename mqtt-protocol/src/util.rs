@@ -73,7 +73,14 @@ impl Decode<Self> for int_type {
 
 impl Decode<Self> for Vec<u8> {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), crate::packet::ControlPacketParseError> {
+		if data.len() < 2 {
+			return Err(ControlPacketParseError::NotEnoughData);
+		}
 		let len = u16::from_be_bytes(data[0..2].try_into().unwrap()) as usize;
+
+		if data.len() < 2 + len {
+			return Err(ControlPacketParseError::NotEnoughData);
+		}
 		let (value, rest) = data[2..].split_at(len);
 
 		Ok((value.to_vec(), rest))

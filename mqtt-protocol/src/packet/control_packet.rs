@@ -55,7 +55,13 @@ impl MqttControlPacket {
 		self.header.kind()
 	}
 
-	pub fn header(&self) -> &Option<VariableHeader> {
+	/// Get the fixed header of the packet.
+	pub fn fixed_header(&self) -> &MqttFixedHeader {
+		&self.header
+	}
+
+	/// Get the variable header of the packet.
+	pub fn variable_header(&self) -> &Option<VariableHeader> {
 		&self.variable_header
 	}
 
@@ -64,12 +70,10 @@ impl MqttControlPacket {
 		tracing::trace!(data = format!("{:2x?}", data), "Decoding control packet");
 
 		let (header, data) = MqttFixedHeader::decode(data)?;
-		let (variable_header, data) = VariableHeader::decode_from_type(header.kind(), data)?;
-		let (payload, _data) = Payload::decode_from_type(header.kind(), data)?;
+		let (variable_header, data) = VariableHeader::decode_from_type(&header, data)?;
+		let (payload, data) = Payload::decode_from_type(&header, data)?;
 
-		// TODO: This would be good to have, as we should not expect to have any data
-		// left after parsing the packet.
-		// debug_assert!(data.is_empty()); // There should be no data left
+		debug_assert!(data.is_empty()); // There should be no data left
 
 		Ok(Self {
 			header,
