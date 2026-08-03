@@ -2,6 +2,7 @@ use std::io::{self, Cursor};
 
 use crate::packet::{
 	self, Decode, DecodeFromType, Encode, PacketType, connect, publish, suback, subscribe,
+	unsuback, unsubscribe,
 };
 
 /// Payload for a packet.
@@ -10,19 +11,23 @@ use crate::packet::{
 /// that not all packet types has a payload.
 #[derive(Debug, Clone)]
 pub enum Payload {
-	Connect(packet::connect::Payload),
-	Publish(packet::publish::Payload),
-	Subscribe(packet::subscribe::Payload),
-	SubAck(packet::suback::Payload),
+	Connect(connect::Payload),
+	Publish(publish::Payload),
+	Subscribe(subscribe::Payload),
+	SubAck(suback::Payload),
+	Unsubscribe(unsubscribe::Payload),
+	UnsubAck(unsuback::Payload),
 }
 
 impl Encode for Payload {
 	fn encode(&self, data: &mut Cursor<Vec<u8>>) -> io::Result<()> {
 		match self {
-			Payload::Connect(connect) => connect.encode(data),
-			Payload::Publish(publish) => publish.encode(data),
-			Payload::Subscribe(subscribe) => subscribe.encode(data),
-			Payload::SubAck(suback) => suback.encode(data),
+			Payload::Connect(x) => x.encode(data),
+			Payload::Publish(x) => x.encode(data),
+			Payload::Subscribe(x) => x.encode(data),
+			Payload::SubAck(x) => x.encode(data),
+			Payload::Unsubscribe(x) => x.encode(data),
+			Payload::UnsubAck(x) => x.encode(data),
 		}
 	}
 }
@@ -56,6 +61,12 @@ impl DecodeFromType<Payload> for Payload {
 			PacketType::SubAck => {
 				suback::Payload::decode(data).map(|(p, d)| (Some(Self::SubAck(p)), d))
 			}
+			PacketType::Unsubscribe => {
+				unsubscribe::Payload::decode(data).map(|(p, d)| (Some(Self::Unsubscribe(p)), d))
+			}
+			PacketType::UnsubAck => {
+				unsuback::Payload::decode(data).map(|(p, d)| (Some(Self::UnsubAck(p)), d))
+			}
 
 			PacketType::ConnAck
 			| PacketType::Disconnect
@@ -66,7 +77,7 @@ impl DecodeFromType<Payload> for Payload {
 			| PacketType::PingReq
 			| PacketType::PingResp => Ok((None, data)),
 
-			PacketType::UnSubscribe | PacketType::UnsubAck | PacketType::Auth => {
+			PacketType::Auth => {
 				tracing::warn!(?kind, "Decoding not yet supported");
 				Ok((None, data))
 			}
