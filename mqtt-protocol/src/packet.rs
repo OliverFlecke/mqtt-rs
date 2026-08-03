@@ -17,6 +17,8 @@ mod qos;
 mod reason;
 mod suback;
 mod subscribe;
+mod topic;
+mod topic_filter;
 mod variable_header;
 
 use std::{
@@ -25,12 +27,16 @@ use std::{
 };
 
 pub use control_packet::MqttControlPacket;
+pub use fixed_header::MqttFixedHeader;
 pub use kind::PacketType;
 pub use payload::Payload;
+pub use property::Properties;
 pub use protocol_version::ProtocolVersion;
 pub use publish::PublishQoS;
 pub use qos::QoS;
 pub use reason::ReasonCode;
+pub use topic::Topic;
+pub use topic_filter::TopicFilter;
 pub use variable_header::VariableHeader;
 
 /// Trait for types that can be encoded into a byte vector following the MQTT

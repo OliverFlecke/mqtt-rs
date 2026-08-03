@@ -1,7 +1,7 @@
 use std::io::{self, Cursor};
 
 use crate::packet::{
-	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, QoS,
+	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, QoS, Topic,
 	fixed_header::MqttFixedHeader, kind::PacketType, property::Properties,
 };
 
@@ -52,7 +52,7 @@ impl From<PublishQoS> for QoS {
 impl MqttControlPacket {
 	/// Create a packet to publish a message to a topic.
 	pub fn publish(
-		topic: String,
+		topic: Topic,
 		payload: Vec<u8>,
 		qos: PublishQoS,
 		retain: bool,
@@ -90,20 +90,20 @@ pub struct Flags {
 
 #[derive(Debug, Clone)]
 pub struct Header {
-	topic: String,
+	topic: Topic,
 	packet_identifier: Option<u16>,
 	properties: Option<Properties>,
 }
 
 impl Header {
 	pub fn topic(&self) -> &str {
-		self.topic.as_str()
+		self.topic.as_ref()
 	}
 }
 
 impl Encode for Header {
 	fn encode(&self, w: &mut Cursor<Vec<u8>>) -> io::Result<()> {
-		self.topic.as_str().encode(w)?;
+		self.topic.encode(w)?;
 		if let Some(packet_identifier) = self.packet_identifier {
 			packet_identifier.encode(w)?;
 		}
@@ -115,7 +115,7 @@ impl Encode for Header {
 
 impl Decode<Self> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
-		let (topic, data) = String::decode(data)?;
+		let (topic, data) = Topic::decode(data)?;
 
 		// TODO: how do we know if there is a packet identifier or not? It should
 		// only be present if the QoS is > 0.
@@ -164,7 +164,7 @@ mod tests {
 	#[test]
 	fn encode_header() {
 		let header = Header {
-			topic: "test".to_string(),
+			topic: "test".into(),
 			packet_identifier: Some(10),
 			properties: None,
 		};

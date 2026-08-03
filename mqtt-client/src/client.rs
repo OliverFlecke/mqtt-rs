@@ -10,7 +10,7 @@ use tokio::{
 use tokio_util::{future::FutureExt, sync::CancellationToken};
 
 use mqtt_protocol::packet::{
-	Encode, MqttControlPacket, PublishQoS, QoS, ReasonCode, VariableHeader,
+	Encode, MqttControlPacket, PublishQoS, QoS, ReasonCode, Topic, VariableHeader,
 };
 use tracing::instrument;
 
@@ -155,7 +155,7 @@ impl MqttClient {
 	#[instrument(skip(self), level = "debug", err)]
 	pub async fn publish(
 		&mut self,
-		topic: String,
+		topic: Topic,
 		payload: Vec<u8>,
 		retain: bool,
 		qos: QoS,
@@ -171,7 +171,7 @@ impl MqttClient {
 	#[instrument(skip(self), level = "debug")]
 	pub async fn publish_at_most_once(
 		&self,
-		topic: String,
+		topic: Topic,
 		payload: Vec<u8>,
 		retain: bool,
 	) -> Result<(), ClientError> {
@@ -187,7 +187,7 @@ impl MqttClient {
 	#[instrument(skip(self), level = "debug")]
 	pub async fn publish_at_least_once(
 		&mut self,
-		topic: String,
+		topic: Topic,
 		payload: Vec<u8>,
 		retain: bool,
 	) -> Result<(), ClientError> {
@@ -226,7 +226,7 @@ impl MqttClient {
 	/// Publish a message with exactly once delivery.
 	pub async fn publish_exactly_once(
 		&mut self,
-		topic: String,
+		topic: Topic,
 		payload: Vec<u8>,
 		retain: bool,
 	) -> Result<(), ClientError> {

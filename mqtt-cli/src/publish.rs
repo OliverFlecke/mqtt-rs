@@ -9,7 +9,7 @@ pub async fn handler(mut client: MqttClient, args: Publish) -> anyhow::Result<()
 	loop {
 		if let Err(err) = client
 			.publish(
-				args.topic.clone(),
+				args.topic.clone().into(),
 				args.message.clone().into_bytes(),
 				args.retain,
 				args.qos.into(),
