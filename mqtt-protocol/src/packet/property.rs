@@ -150,7 +150,7 @@ impl Encode for Option<Properties> {
 	}
 }
 
-impl Decode<Option<Properties>> for Option<Properties> {
+impl Decode<Self> for Option<Properties> {
 	fn decode(data: &[u8]) -> Result<(Option<Properties>, &[u8]), ControlPacketParseError> {
 		let (property_length, data) = VariableByteInteger::decode(data)?;
 		let len: usize = property_length.into();

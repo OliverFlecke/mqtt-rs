@@ -113,7 +113,7 @@ impl Encode for Header {
 	}
 }
 
-impl Decode<Header> for Header {
+impl Decode<Self> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let (topic, data) = String::decode(data)?;
 
@@ -142,7 +142,7 @@ impl Encode for Payload {
 	}
 }
 
-impl Decode<Payload> for Payload {
+impl Decode<Self> for Payload {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let (payload, data) = Vec::<u8>::decode(data)?;
 		Ok((Self(payload), data))

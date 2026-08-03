@@ -68,7 +68,7 @@ impl Encode for Header {
 	}
 }
 
-impl Decode<Header> for Header {
+impl Decode<Self> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		if [0x00, 0x04, b'M', b'Q', b'T', b'T'] != data[0..6] {
 			return Err(ControlPacketParseError::IncorrectProtocol);

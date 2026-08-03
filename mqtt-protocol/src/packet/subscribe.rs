@@ -42,7 +42,7 @@ impl Encode for Header {
 	}
 }
 
-impl Decode<Header> for Header {
+impl Decode<Self> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let packet_id = u16::from_be_bytes([data[0], data[1]]);
 		let (properties, data) = Option::<Properties>::decode(&data[2..])?;
@@ -117,7 +117,7 @@ impl Encode for TopicFilter {
 	}
 }
 
-impl Decode<TopicFilter> for TopicFilter {
+impl Decode<Self> for TopicFilter {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let (topic, data) = String::decode(data)?;
 		let (options, data) = SubscriptionOptions::decode(data)?;

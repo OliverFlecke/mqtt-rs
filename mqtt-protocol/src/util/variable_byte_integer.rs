@@ -61,7 +61,7 @@ impl Encode for VariableByteInteger {
 	}
 }
 
-impl Decode<VariableByteInteger> for VariableByteInteger {
+impl Decode<Self> for VariableByteInteger {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let mut multiplier = 1u32;
 		let mut value = 0u32;

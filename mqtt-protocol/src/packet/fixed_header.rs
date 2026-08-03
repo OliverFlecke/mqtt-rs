@@ -49,7 +49,7 @@ impl Encode for MqttFixedHeader {
 	}
 }
 
-impl Decode<MqttFixedHeader> for MqttFixedHeader {
+impl Decode<Self> for MqttFixedHeader {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		tracing::trace!(data = format!("{:2x?}", data), "Decoding fixed header");
 

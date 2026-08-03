@@ -16,7 +16,7 @@ impl Encode for Header {
 	}
 }
 
-impl Decode<Header> for Header {
+impl Decode<Self> for Header {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), ControlPacketParseError> {
 		let (packet_identifier, data) = u16::decode(data)?;
 

@@ -71,7 +71,7 @@ impl Decode<Self> for int_type {
 	}
 }
 
-impl Decode<Vec<u8>> for Vec<u8> {
+impl Decode<Self> for Vec<u8> {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), crate::packet::ControlPacketParseError> {
 		let len = u16::from_be_bytes(data[0..2].try_into().unwrap()) as usize;
 		let (value, rest) = data[2..].split_at(len);
@@ -80,7 +80,7 @@ impl Decode<Vec<u8>> for Vec<u8> {
 	}
 }
 
-impl Decode<String> for String {
+impl Decode<Self> for String {
 	fn decode(data: &[u8]) -> Result<(Self, &[u8]), crate::packet::ControlPacketParseError> {
 		let len = u16::from_be_bytes(data[0..2].try_into().unwrap()) as usize;
 		let (value, rest) = data[2..].split_at(len);
