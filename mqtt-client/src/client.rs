@@ -128,8 +128,8 @@ impl MqttClient {
 
 						let packet = match flags.qos {
 							QoS::AtMostOnce => continue,
-							QoS::AtLeastOnce => MqttControlPacket::puback(id),
-							QoS::ExactlyOnce => MqttControlPacket::pubrec(id),
+							QoS::AtLeastOnce => MqttControlPacket::publish_acknowledged(id),
+							QoS::ExactlyOnce => MqttControlPacket::publish_received(id),
 						};
 
 						if let Err(err) = sub_tx.send(packet).await {
@@ -138,7 +138,9 @@ impl MqttClient {
 					}
 					(Some(VariableHeader::PubRel(header)), _) => {
 						if let Err(err) = sub_tx
-							.send(MqttControlPacket::pubcomp(header.packet_identifier))
+							.send(MqttControlPacket::publish_complete(
+								header.packet_identifier,
+							))
 							.await
 						{
 							tracing::error!(?err, "Error sending pubrel");
@@ -316,8 +318,9 @@ impl MqttClient {
 					tracing::debug!(?packet_id, "QoS 2 - Received pubrec for packet");
 
 					sending_ct.cancel();
-					sending_ct =
-						self.publish_packet_repeat(move |_| MqttControlPacket::pubrel(packet_id));
+					sending_ct = self.publish_packet_repeat(move |_| {
+						MqttControlPacket::publish_release(packet_id)
+					});
 				}
 				(Some(VariableHeader::PubComp(h)), _) if h.packet_identifier == packet_id => {
 					tracing::debug!(?packet_id, "QoS 2 - Received pubcomp for packet");

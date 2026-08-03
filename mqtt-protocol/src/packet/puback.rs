@@ -4,7 +4,7 @@ use crate::packet::{self, ControlPacketParseError, Decode, Encode, MqttControlPa
 
 impl MqttControlPacket {
 	/// Create a control packet to acknowledge a publish packet.
-	pub fn puback(packet_id: u16) -> Self {
+	pub fn publish_acknowledged(packet_id: u16) -> Self {
 		Self::new(
 			PacketType::PubAck,
 			Some(packet::VariableHeader::PubAck(Header {

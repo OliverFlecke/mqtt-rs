@@ -8,7 +8,7 @@ use crate::packet::{
 
 impl MqttControlPacket {
 	/// Create a control packet to acknowledge a publish packet.
-	pub fn pubcomp(packet_id: u16) -> Self {
+	pub fn publish_complete(packet_id: u16) -> Self {
 		Self::new(
 			PacketType::PubComp,
 			Some(VariableHeader::PubComp(Header {

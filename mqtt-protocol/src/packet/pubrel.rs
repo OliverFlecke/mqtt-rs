@@ -7,7 +7,7 @@ use crate::packet::{
 };
 
 impl MqttControlPacket {
-	pub fn pubrel(packet_id: u16) -> Self {
+	pub fn publish_release(packet_id: u16) -> Self {
 		Self::new_from_parts(
 			MqttFixedHeader::new(PacketType::PubRel, 0x02),
 			Some(packet::VariableHeader::PubRel(Header {
