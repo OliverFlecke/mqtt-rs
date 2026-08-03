@@ -15,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let options = ConnectOptionsBuilder::default()
 		.client_id(args.client_id)
-		.build()?;
+		.build();
 	let client = MqttClient::connect(format!("{}:{}", args.host, args.port), options).await?;
 
 	match args.command {

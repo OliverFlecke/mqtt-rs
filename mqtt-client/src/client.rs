@@ -1,11 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Context;
-use derive_builder::Builder;
 use tokio::{
 	io::{self, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
 	net::{TcpStream, ToSocketAddrs},
-	sync::{broadcast, mpsc, oneshot},
+	sync::{broadcast, mpsc},
 	time::sleep,
 };
 use tokio_util::{future::FutureExt, sync::CancellationToken};
@@ -17,9 +16,39 @@ use tracing::instrument;
 
 use crate::session::Session;
 
-#[derive(Debug, Default, Builder)]
+/// Options for connecting to a broker.
+#[derive(Debug, Default)]
 pub struct ConnectOptions {
 	client_id: Option<String>,
+	publish_retry_interval: Duration,
+}
+
+/// Builder for connection options.
+#[derive(Debug, Default)]
+pub struct ConnectOptionsBuilder {
+	client_id: Option<String>,
+	publish_retry_interval: Option<Duration>,
+}
+
+impl ConnectOptionsBuilder {
+	pub fn client_id(mut self, client_id: Option<String>) -> Self {
+		self.client_id = client_id;
+		self
+	}
+
+	pub fn publish_retry_interval(mut self, interval: Duration) -> Self {
+		self.publish_retry_interval = Some(interval);
+		self
+	}
+
+	pub fn build(self) -> ConnectOptions {
+		ConnectOptions {
+			client_id: self.client_id,
+			publish_retry_interval: self
+				.publish_retry_interval
+				.unwrap_or(Duration::from_millis(500)),
+		}
+	}
 }
 
 /// A client that can send and receive MQTT packets.
@@ -29,6 +58,7 @@ pub struct MqttClient {
 	rx: broadcast::Sender<MqttControlPacket>,
 	ct: CancellationToken,
 	session: Session,
+	publish_retry_interval: Duration,
 }
 
 impl MqttClient {
@@ -82,6 +112,7 @@ impl MqttClient {
 			rx: reader_tx,
 			ct,
 			session,
+			publish_retry_interval: options.publish_retry_interval,
 		})
 	}
 
@@ -104,6 +135,33 @@ impl MqttClient {
 	/// a higher-level API to publish messages.
 	pub async fn send(&self, packet: MqttControlPacket) -> Result<(), ClientError> {
 		self.tx.send(packet).await.map_err(ClientError::SendFailed)
+	}
+
+	/// Send a packet to the broker repeatedly until the returned cancellation
+	/// token is canceled.
+	pub async fn send_packet_repeat(
+		&self,
+		packet: MqttControlPacket,
+		interval: Duration,
+	) -> CancellationToken {
+		let ct = CancellationToken::new();
+
+		let task_ct = ct.clone();
+		let tx = self.tx.clone();
+		tokio::spawn(async move {
+			loop {
+				if let Err(err) = tx.send(packet.clone()).await {
+					tracing::error!(?err, "Error sending packet");
+				}
+				sleep(interval).with_cancellation_token(&task_ct).await;
+
+				if task_ct.is_cancelled() {
+					break;
+				}
+			}
+		});
+
+		ct
 	}
 
 	/// Flush all packets to the broker.
@@ -161,49 +219,54 @@ impl MqttClient {
 		retain: bool,
 	) -> Result<(), ClientError> {
 		let packet_id = self.session.get_next_packet_id();
-		let rx = self.listen_for_puback(packet_id);
 
-		tracing::debug!(?packet_id, "Publishing packet");
-		let packet = MqttControlPacket::publish(
-			topic,
-			payload,
-			PublishQoS::AtLeastOnce(packet_id),
-			retain,
-			false,
-		);
-		self.send(packet).await?;
-
-		// TODO: must continue to send until puback is received
-
-		if let Err(err) = rx.await {
-			tracing::error!(?err, "Error waiting for ack");
-		}
-
-		Ok(())
-	}
-
-	/// Listen for a puback packet with the given packet id.
-	fn listen_for_puback(&self, packet_id: u16) -> oneshot::Receiver<()> {
-		let mut sub = self.subscribe();
-		let ct = self.cancellation_token().clone();
-		let (tx, rx) = oneshot::channel::<()>();
-
+		let retry_interval = self.publish_retry_interval;
+		let sending_ct = CancellationToken::new();
+		let task_sending_ct = sending_ct.clone();
+		let tx = self.tx.clone();
 		tokio::spawn(async move {
-			while let Some(Ok(packet)) = sub.recv().with_cancellation_token(&ct).await {
-				if let (Some(VariableHeader::PubAck(header)), _) = packet.into()
-					&& header.packet_identifier == packet_id
-				{
-					tracing::debug!(?packet_id, "Received puback for packet");
-					if let Err(err) = tx.send(()) {
-						tracing::error!(?err, "Error sending ack");
-					}
+			let mut duplicate = false;
+			loop {
+				let packet = MqttControlPacket::publish(
+					topic.clone(),
+					payload.clone(),
+					PublishQoS::AtLeastOnce(packet_id),
+					retain,
+					duplicate,
+				);
+				if let Err(err) = tx.send(packet.clone()).await {
+					tracing::error!(?err, "Error sending packet");
+				}
 
+				sleep(retry_interval)
+					.with_cancellation_token(&task_sending_ct)
+					.await;
+
+				if task_sending_ct.is_cancelled() {
 					break;
 				}
+
+				duplicate = true;
 			}
 		});
 
-		rx
+		let mut sub = self.subscribe();
+		while let Some(Ok(packet)) = sub
+			.recv()
+			.with_cancellation_token(self.cancellation_token())
+			.await
+		{
+			if let (Some(VariableHeader::PubAck(header)), _) = packet.into()
+				&& header.packet_identifier == packet_id
+			{
+				tracing::debug!(?packet_id, "Received puback for packet");
+				sending_ct.cancel();
+
+				break;
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Publish a message with exactly once delivery.
