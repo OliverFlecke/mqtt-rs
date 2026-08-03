@@ -5,6 +5,12 @@ pub struct Header {
 	packet_id: u16,
 }
 
+impl Header {
+	pub fn packet_id(&self) -> u16 {
+		self.packet_id
+	}
+}
+
 impl Encode for Header {
 	fn encode(&self, w: &mut std::io::Cursor<Vec<u8>>) -> std::io::Result<()> {
 		self.packet_id.encode(w)

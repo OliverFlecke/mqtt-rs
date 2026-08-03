@@ -16,17 +16,10 @@ fn on_message(packet: MqttControlPacket) {
 		(Some(VariableHeader::SubAck(_)), _) => {
 			// TODO: track the subscription and related topic to print
 			// the topic that we have subscribed to.
-			tracing::info!("Subscribed!");
 		}
 		(Some(VariableHeader::Publish(header)), Some(Payload::Publish(payload))) => {
 			let msg: String = payload.try_into().expect("always to be valid UTF-8");
-			tracing::info!(
-				topic = header.topic(),
-				msg,
-				"Received message on topic: {:} -> {:?}",
-				header.topic(),
-				msg
-			);
+			println!("Received message: {:} -> {:?}", header.topic(), msg);
 		}
 		_ => (),
 	}
@@ -47,6 +40,7 @@ pub async fn handler(mut client: MqttClient, args: Subscribe) -> anyhow::Result<
 
 	let ct = client.on_message(on_message);
 	client.subscribe(topic).await?;
+	println!("Subscribed to {}", args.topic);
 
 	tokio::select! {
 		_ = signal::ctrl_c() => {

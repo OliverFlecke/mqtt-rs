@@ -202,7 +202,11 @@ impl MqttClient {
 		self.send_packet(MqttControlPacket::subscribe(packet_id, vec![topic]))
 			.await?;
 
-		// TODO: should we wait for the ack?
+		self.wait_for_packet(|packet| {
+			matches!(packet.into(), (Some(VariableHeader::SubAck(header)), _) if header.packet_id() == packet_id)
+		})
+		.await?;
+
 		Ok(())
 	}
 
@@ -211,7 +215,32 @@ impl MqttClient {
 		self.send_packet(MqttControlPacket::unsubscribe(packet_id, vec![topic]))
 			.await?;
 
-		// TODO: should we wait for the ack?
+		self.wait_for_packet(|packet| {
+			matches!(packet.into(), (Some(VariableHeader::UnsubAck(header)), _) if header.packet_id() == packet_id)
+		})
+		.await?;
+
+		Ok(())
+	}
+
+	async fn wait_for_packet<F>(&mut self, predicate: F) -> Result<(), ClientError>
+	where
+		F: Fn(MqttControlPacket) -> bool,
+	{
+		loop {
+			let packet = self
+				.subscribe_for_packet()
+				.recv()
+				.with_cancellation_token(self.cancellation_token())
+				.await
+				.ok_or(ClientError::ReceiveFailed)?
+				.map_err(|_| ClientError::ReceiveFailed)?;
+
+			if predicate(packet) {
+				break;
+			}
+		}
+
 		Ok(())
 	}
 
@@ -506,6 +535,8 @@ pub enum ClientError {
 	ReceiveFailed,
 	#[error("Missing client id")]
 	MissingClientId,
+	#[error("Failed to subscribe")]
+	SubscribeFailed,
 }
 
 async fn health_check(

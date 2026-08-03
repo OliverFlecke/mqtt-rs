@@ -16,16 +16,41 @@ The project is laid out with three crates:
 - `mqtt-client`: a client implementation that can connect to a broker and send and receive packets.
 - `mqtt-cli`: a command line interface (and planned REPL) to the client.
 
+## Installation
+
+See [GitHub releases](https://github.com/OliverFlecke/mqtt-rs/releases) for pre-built binaries and
+how to install.
+
+## Usage
+
+After installing, use `mqtt --help` to see the full list of available commands.
+
+```sh
+# Publish a message to a topic
+mqtt publish my/topic "Hello World"
+
+# Subscribe to a topic
+mqtt subscribe my/topic
+
+# Configure connection options
+mqtt --host localhost --port 1883 --client-id alice publish my/topic "Hello World"
+
+# Publish a retained message with QoS 2
+mqtt publish --retain --qos exactly-once my/topic "Hello World"
+```
+
 ## Features
+
+Currently the following features are supported or are planned to be implemented:
 
 - [ ] Protocol
 	- [x] Connect
 	- [x] Subscribe
 	- [x] Publish
 	- [x] Publish QoS 1
-	- [ ] Subscribe QoS 1
 	- [x] Publish QoS 2
-	- [ ] Subscribe QoS 2
+	- [x] Subscribe QoS 1
+	- [x] Subscribe QoS 2
 	- [ ] no_std support - currently there are dependencies on some types in `std`
 	      which is used for encoding and decoding of packets, but it is quite
 		  minimal. Should be possible to refactor this to use no_std. Main challenge
@@ -40,5 +65,5 @@ The project is laid out with three crates:
 	- [ ] Websocket
 - [ ] CLI
 	- [x] Commands for pub and sub
-	- [ ] Testing connection and features of broker
 	- [x] REPL
+	- [ ] Testing connection and features of broker

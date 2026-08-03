@@ -20,7 +20,7 @@ pub async fn handler(mut client: MqttClient, args: Publish) -> anyhow::Result<Mq
 			break;
 		}
 		client.flush().await?;
-		tracing::info!("Message published");
+		println!("Published {} -> {}", args.topic, args.message);
 
 		if let Some(repeat_frequency_ms) = args.repeat_frequency_ms {
 			sleep(Duration::from_millis(repeat_frequency_ms)).await;

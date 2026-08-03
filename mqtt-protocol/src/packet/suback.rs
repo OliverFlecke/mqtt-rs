@@ -6,8 +6,14 @@ use crate::packet::{
 
 #[derive(Debug, Clone)]
 pub struct Header {
-	pub packet_id: u16,
+	packet_id: u16,
 	pub properties: Option<Properties>,
+}
+
+impl Header {
+	pub fn packet_id(&self) -> u16 {
+		self.packet_id
+	}
 }
 
 impl Encode for Header {
