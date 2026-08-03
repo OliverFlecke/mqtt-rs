@@ -41,4 +41,4 @@ The project is laid out with three crates:
 - [ ] CLI
 	- [x] Commands for pub and sub
 	- [ ] Testing connection and features of broker
-	- [ ] REPL
+	- [x] REPL

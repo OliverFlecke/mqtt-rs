@@ -11,6 +11,26 @@ pub async fn handler(client: MqttClient) -> anyhow::Result<()> {
 	let mut rl = DefaultEditor::new()?;
 	let mut client = client;
 
+	// TODO: it would be good to have a context to know which topics we are
+	// subscribed to. That would also allow us to easily provide outputs that
+	// informs the user when the sub/unsub from a topic.
+	// Should that be tracked here or be a feature of the client?
+
+	let ct = client.on_message(move |msg| match msg.into() {
+		(Some(VariableHeader::Publish(header)), Some(Payload::Publish(payload))) => {
+			let payload: String = payload
+				.try_into()
+				.context("Unable to decode received message")
+				.unwrap();
+			println!("{:}: {:}", header.topic(), payload);
+		}
+		(Some(VariableHeader::SubAck(_)), _) => {
+			// Would be nice to print the topic that we have subscribed to.
+			println!("Subscribed");
+		}
+		_ => {}
+	});
+
 	loop {
 		let readline = rl.readline("> ");
 		match readline {
@@ -40,41 +60,7 @@ pub async fn handler(client: MqttClient) -> anyhow::Result<()> {
 				};
 
 				tracing::debug!("Parsed arguments {:#?}", args);
-
-				match args.command {
-					Command::Publish(publish) => {
-						client
-							.publish(
-								publish.topic.into(),
-								publish.message.into_bytes(),
-								publish.retain,
-								publish.qos.into(),
-							)
-							.await?;
-					}
-					Command::Subscribe(sub) => {
-						// TODO: how should we handle unsubscriptions?
-						let _ = client.on_message(|msg| match msg.into() {
-							(
-								Some(VariableHeader::Publish(header)),
-								Some(Payload::Publish(payload)),
-							) => {
-								let payload: String = payload
-									.try_into()
-									.context("Unable to decode received message")
-									.unwrap();
-								println!("{:}: {:}", header.topic(), payload);
-							}
-							(Some(VariableHeader::SubAck(_)), _) => {
-								// Would be nice to print the topic that we have subscribed to.
-								println!("Subscribed!");
-							}
-							_ => {}
-						});
-
-						client.subscribe(sub.topic.as_str().into()).await?;
-					}
-				}
+				handle_command(&mut client, args.command).await?;
 			}
 			Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
 				break;
@@ -85,6 +71,32 @@ pub async fn handler(client: MqttClient) -> anyhow::Result<()> {
 			}
 		}
 	}
+
+	ct.cancel();
+
+	Ok(())
+}
+
+async fn handle_command(client: &mut MqttClient, command: Command) -> anyhow::Result<()> {
+	match command {
+		Command::Publish(publish) => {
+			client
+				.publish(
+					publish.topic.into(),
+					publish.message.into_bytes(),
+					publish.retain,
+					publish.qos.into(),
+				)
+				.await?;
+		}
+		Command::Subscribe(sub) => {
+			client.subscribe(sub.topic.as_str().into()).await?;
+		}
+		Command::Unsubscribe { topic } => {
+			client.unsubscribe(topic.as_str().into()).await?;
+			println!("Unsubscribed from {}", topic.as_str());
+		}
+	};
 
 	Ok(())
 }
@@ -101,4 +113,6 @@ enum Command {
 	Publish(Publish),
 	#[command(alias("sub"))]
 	Subscribe(Subscribe),
+	#[command(alias("unsub"))]
+	Unsubscribe { topic: String },
 }

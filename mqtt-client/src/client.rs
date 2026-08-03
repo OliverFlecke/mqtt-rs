@@ -155,7 +155,19 @@ impl MqttClient {
 	pub async fn subscribe(&mut self, topic: TopicFilter) -> Result<(), ClientError> {
 		let packet_id = self.session.get_next_packet_id();
 		self.send_packet(MqttControlPacket::subscribe(packet_id, vec![topic]))
-			.await
+			.await?;
+
+		// TODO: should we wait for the ack?
+		Ok(())
+	}
+
+	pub async fn unsubscribe(&mut self, topic: Topic) -> Result<(), ClientError> {
+		let packet_id = self.session.get_next_packet_id();
+		self.send_packet(MqttControlPacket::unsubscribe(packet_id, vec![topic]))
+			.await?;
+
+		// TODO: should we wait for the ack?
+		Ok(())
 	}
 
 	/// Publish a message to a topic

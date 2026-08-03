@@ -1,10 +1,10 @@
 use crate::packet::{
 	self, ControlPacketParseError, Decode, Encode, MqttControlPacket, MqttFixedHeader, PacketType,
-	Properties, TopicFilter,
+	Properties, Topic,
 };
 
 impl MqttControlPacket {
-	pub fn unsubscribe(packet_id: u16, topics: Vec<TopicFilter>) -> Self {
+	pub fn unsubscribe(packet_id: u16, topics: Vec<Topic>) -> Self {
 		debug_assert_ne!(topics.len(), 0);
 
 		Self::new_from_parts(
@@ -51,7 +51,7 @@ impl Decode<Self> for Header {
 
 #[derive(Debug, Clone)]
 pub struct Payload {
-	topics: Vec<TopicFilter>,
+	topics: Vec<Topic>,
 }
 
 impl Encode for Payload {
@@ -69,7 +69,7 @@ impl Decode<Self> for Payload {
 		let mut data = data;
 		let mut topics = Vec::new();
 		while !data.is_empty() {
-			let (topic, rest) = TopicFilter::decode(data)?;
+			let (topic, rest) = Topic::decode(data)?;
 			data = rest;
 			topics.push(topic);
 		}
