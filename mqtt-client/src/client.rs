@@ -179,7 +179,10 @@ impl MqttClient {
 	/// This is a low-level API to send packet level messages. See `publish` for
 	/// a higher-level API to publish messages.
 	pub async fn send_packet(&self, packet: MqttControlPacket) -> Result<(), ClientError> {
-		self.tx.send(packet).await.map_err(ClientError::SendFailed)
+		self.tx
+			.send(packet)
+			.await
+			.map_err(|e| ClientError::SendFailed(Box::new(e)))
 	}
 
 	/// Flush all packets to the broker.
@@ -502,7 +505,7 @@ impl MqttClient {
 		tx_write
 			.send(MqttControlPacket::connect(None, None, None))
 			.await
-			.map_err(ClientError::SendFailed)?;
+			.map_err(|e| ClientError::SendFailed(Box::new(e)))?;
 		match rx_read
 			.recv()
 			.await
@@ -530,7 +533,7 @@ pub enum ClientError {
 	#[error("Failed to connect")]
 	ConnectFailed,
 	#[error("Failed to send packet: {0}")]
-	SendFailed(#[source] mpsc::error::SendError<MqttControlPacket>),
+	SendFailed(#[source] Box<mpsc::error::SendError<MqttControlPacket>>),
 	#[error("Failed to receive packet")]
 	ReceiveFailed,
 	#[error("Missing client id")]
