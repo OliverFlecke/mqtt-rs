@@ -6,10 +6,9 @@
 	"customManagers": [
 		{
 			"customType": "regex",
-			"description": "rust toolchain pinned in CI (build.yml) and mise.toml",
-			"managerFilePatterns": ["/(^|/)build\\.yml$/", "/(^|/)mise\\.toml$/"],
+			"description": "rust toolchain pinned in mise.toml",
+			"managerFilePatterns": ["/(^|/)mise\\.toml$/"],
 			"matchStrings": [
-				"VERSION: (?<currentValue>\\d+\\.\\d+\\.\\d+)",
 				"rust = \\{ version = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
 			],
 			"depNameTemplate": "rust-lang/rust",
@@ -46,7 +45,7 @@
 			"groupName": "hk"
 		},
 		{
-			"description": "bump rust in mise.toml and build.yml together",
+			"description": "bump the rust toolchain",
 			"matchPackageNames": ["rust-lang/rust", "rust"],
 			"groupName": "rust toolchain"
 		},
