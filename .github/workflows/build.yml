@@ -8,7 +8,6 @@ on:
   pull_request:
 
 env:
-  VERSION: 1.97.1
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -18,10 +17,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v4
         with:
-          toolchain: ${{ env.VERSION }}
+          install_args: rust
       - name: Build
         run: cargo build --all-targets --all-features
 
@@ -36,23 +34,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v4
         with:
-          toolchain: ${{ env.VERSION }}
-          components: rustfmt
+          install_args: rust
       - name: Format
         run: cargo fmt --all -- --check
 
   clippy:
-    name: Format
+    name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v4
         with:
-          toolchain: ${{ env.VERSION }}
-          components: clippy
+          install_args: rust
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings

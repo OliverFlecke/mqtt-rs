@@ -1,0 +1,64 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended"],
+	"platformAutomerge": true,
+	"rebaseWhen": "behind-base-branch",
+	"customManagers": [
+		{
+			"customType": "regex",
+			"description": "rust toolchain pinned in mise.toml",
+			"managerFilePatterns": ["/(^|/)mise\\.toml$/"],
+			"matchStrings": [
+				"rust = \\{ version = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
+			],
+			"depNameTemplate": "rust-lang/rust",
+			"datasourceTemplate": "github-tags"
+		},
+		{
+			"customType": "regex",
+			"description": "keep hk.pkl amends/import versions in sync with the hk release",
+			"managerFilePatterns": ["/(^|/)hk\\.pkl$/"],
+			"matchStrings": [
+				"download/v(?<currentValue>\\d+\\.\\d+\\.\\d+)/hk@",
+				"/hk@(?<currentValue>\\d+\\.\\d+\\.\\d+)#"
+			],
+			"depNameTemplate": "jdx/hk",
+			"datasourceTemplate": "github-releases"
+		}
+	],
+	"lockFileMaintenance": { "enabled": true, "automerge": true },
+	"minimumReleaseAge": "2 days",
+	"packageRules": [
+		{
+			"description": "automerge everything except major once checks pass",
+			"matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+			"automerge": true
+		},
+		{
+			"description": "group mise tool bumps",
+			"matchManagers": ["mise"],
+			"groupName": "mise tools"
+		},
+		{
+			"description": "bump hk in mise.toml and hk.pkl together",
+			"matchPackageNames": ["jdx/hk", "hk"],
+			"groupName": "hk"
+		},
+		{
+			"description": "bump the rust toolchain",
+			"matchPackageNames": ["rust-lang/rust", "rust"],
+			"groupName": "rust toolchain"
+		},
+		{
+			"description": "cargo: group all minor/patch updates into one PR",
+			"matchManagers": ["cargo"],
+			"matchUpdateTypes": ["minor", "patch"],
+			"groupName": "cargo dependencies (non-major)"
+		},
+		{
+			"description": "wait 7 days before major update PRs",
+			"matchUpdateTypes": ["major"],
+			"minimumReleaseAge": "7 days"
+		}
+	]
+}
