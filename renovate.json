@@ -1,0 +1,26 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended"],
+	"platformAutomerge": true,
+	"rebaseWhen": "behind-base-branch",
+	"lockFileMaintenance": { "enabled": true, "automerge": true },
+	"minimumReleaseAge": "2 days",
+	"packageRules": [
+		{
+			"description": "automerge everything except major once checks pass",
+			"matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+			"automerge": true
+		},
+		{
+			"description": "cargo: group all minor/patch updates into one PR",
+			"matchManagers": ["cargo"],
+			"matchUpdateTypes": ["minor", "patch"],
+			"groupName": "cargo dependencies (non-major)"
+		},
+		{
+			"description": "wait 7 days before major update PRs",
+			"matchUpdateTypes": ["major"],
+			"minimumReleaseAge": "7 days"
+		}
+	]
+}
