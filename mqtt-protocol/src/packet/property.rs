@@ -31,11 +31,11 @@ pub enum Id {
 	ServerReference = 0x1C,     // UTF-8 Encoded String -> CONNACK, DISCONNECT
 	ReasonString = 0x1F, // UTF-8 Encoded String -> CONNACK, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBACK, UNSUBACK, DISCONNECT, AUTH
 
-	ReceiveMaximum = 0x21,                  // Two Byte Integer -> CONNECT, CONNACK
-	TopicAliasMaximum = 0x22,               // Two Byte Integer -> CONNECT, CONNACK
-	TopicAlias = 0x23,                      // Two Byte Integer -> PUBLISH
-	MaximumQoS = 0x24,                      // Byte -> CONNACK
-	RetainAvailable = 0x25,                 // Byte -> CONNACK
+	ReceiveMaximum = 0x21,    // Two Byte Integer -> CONNECT, CONNACK
+	TopicAliasMaximum = 0x22, // Two Byte Integer -> CONNECT, CONNACK
+	TopicAlias = 0x23,        // Two Byte Integer -> PUBLISH
+	MaximumQoS = 0x24,        // Byte -> CONNACK
+	RetainAvailable = 0x25,   // Byte -> CONNACK
 	UserProperty = 0x26, // UTF-8 String Pair -> CONNECT, CONNACK, PUBLISH, Will Properties, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, SUBACK, UNSUBSCRIBE, UNSUBACK, DISCONNECT, AUTH
 	MaximumPacketSize = 0x27, // Four Byte Integer -> CONNECT, CONNACK
 	WildcardSubscriptionAvailable = 0x28, // Byte -> CONNACK
